@@ -1,0 +1,12 @@
+﻿<Window x:Class="WpfApplication1.ToolWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:props="clr-namespace:WpfApplication1.Properties"
+        Title="Tool Window" Height="300" Width="300"
+        Name="__Me">
+    <DockPanel>
+        <ToggleButton x:Name="StartStop" Content="Start/Stop" DockPanel.Dock="Top" IsChecked="False" Click="ToggleButton_Click"/>
+        <ProgressBar x:Name="ProgressBar" DockPanel.Dock="Bottom" Height="10" Minimum="0" Maximum="100" Value="{Binding Percent}" Visibility="Collapsed"/>
+        <TextBox/>
+    </DockPanel>
+</Window>
