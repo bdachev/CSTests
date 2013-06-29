@@ -6,6 +6,9 @@
         Title="MainWindow" Height="350" Width="525"
         x:Name="mainWindow">
     <DockPanel>
+        <DockPanel.Resources>
+            <l:Serpentine x:Key="Serpentine" x:Name="__Serpentine" NumSegments="8192" NumSectors="4" NumRevolutions="4" Thickness="0.2" Radius="5" Length="20"/>
+        </DockPanel.Resources>
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="File">
                 <MenuItem Header="Open" Click="MenuItemOpenClick"/>
@@ -20,28 +23,7 @@
                 <Button>Btn2</Button>
             </ToolBar>
         </ToolBarTray>
-        <Viewport3D >
-            <Viewport3D.Resources>
-                <l:Serpentine x:Key="Serpentine" NumSegments="8192" NumSectors="4" NumRevolutions="4" Thickness="0.2" Radius="5" Length="20"/>
-                <ObjectDataProvider x:Key="odpSerpentine" ObjectInstance="{StaticResource Serpentine}" MethodName="CreateMesh"/>
-            </Viewport3D.Resources>
-            <Viewport3D.Triggers>
-                <!-- Animates the rectangle's opacity. -->
-                <EventTrigger RoutedEvent="Rectangle.Loaded">
-                    <BeginStoryboard>
-                        <Storyboard>
-                            <DoubleAnimation
-                                    Storyboard.TargetName="__Rotate1" 
-                                    Storyboard.TargetProperty="Angle"
-                                    From="0" To="360" Duration="0:0:2" RepeatBehavior="Forever" />
-                            <DoubleAnimation
-                                    Storyboard.TargetName="__CameraAngle" 
-                                    Storyboard.TargetProperty="Angle"
-                                    From="0" To="360" Duration="0:0:10" RepeatBehavior="Forever" />
-                        </Storyboard>
-                    </BeginStoryboard>
-                </EventTrigger>
-            </Viewport3D.Triggers>
+        <Viewport3D Name="Viewport3D" DataContext="{StaticResource Serpentine}">
             <Viewport3D.Camera>
                 <OrthographicCamera Position="0,0,0" UpDirection="1,0,0" LookDirection="0,0,-1" FarPlaneDistance="100" NearPlaneDistance="-100" Width="50">
                     <OrthographicCamera.Transform>
@@ -68,10 +50,7 @@
                     </ModelVisual3D>
                     <ModelVisual3D>
                         <ModelVisual3D.Content>
-                            <GeometryModel3D>
-                                <GeometryModel3D.Geometry>
-                                    <Binding Source="{StaticResource odpSerpentine}"/>
-                                </GeometryModel3D.Geometry>
+                            <GeometryModel3D Geometry="{Binding Mesh}">
                                 <GeometryModel3D.Material>
                                     <DiffuseMaterial Brush="Red"/>
                                 </GeometryModel3D.Material>
@@ -96,10 +75,7 @@
                     </ModelVisual3D>
                     <ModelVisual3D>
                         <ModelVisual3D.Content>
-                            <GeometryModel3D>
-                                <GeometryModel3D.Geometry>
-                                    <Binding Source="{StaticResource odpSerpentine}"/>
-                                </GeometryModel3D.Geometry>
+                            <GeometryModel3D Geometry="{Binding Mesh}">
                                 <GeometryModel3D.Material>
                                     <DiffuseMaterial Brush="Blue"/>
                                 </GeometryModel3D.Material>
@@ -124,10 +100,7 @@
                     </ModelVisual3D>
                     <ModelVisual3D>
                         <ModelVisual3D.Content>
-                            <GeometryModel3D>
-                                <GeometryModel3D.Geometry>
-                                    <Binding Source="{StaticResource odpSerpentine}"/>
-                                </GeometryModel3D.Geometry>
+                            <GeometryModel3D Geometry="{Binding Mesh}">
                                 <GeometryModel3D.Material>
                                     <DiffuseMaterial Brush="Green"/>
                                 </GeometryModel3D.Material>
@@ -152,10 +125,7 @@
                     </ModelVisual3D>
                     <ModelVisual3D>
                         <ModelVisual3D.Content>
-                            <GeometryModel3D>
-                                <GeometryModel3D.Geometry>
-                                    <Binding Source="{StaticResource odpSerpentine}"/>
-                                </GeometryModel3D.Geometry>
+                            <GeometryModel3D Geometry="{Binding Mesh}">
                                 <GeometryModel3D.Material>
                                     <DiffuseMaterial Brush="Cyan"/>
                                 </GeometryModel3D.Material>
@@ -178,4 +148,25 @@
             </ModelVisual3D>
         </Viewport3D>
     </DockPanel>
+    <Window.Triggers>
+        <!-- Animates the rectangle's opacity. -->
+        <EventTrigger RoutedEvent="Rectangle.Loaded">
+            <BeginStoryboard>
+                <Storyboard>
+                    <!--<DoubleAnimation
+                                    Storyboard.TargetName="__Rotate1" 
+                                    Storyboard.TargetProperty="Angle"
+                                    From="0" To="360" Duration="0:0:2" RepeatBehavior="Forever" />
+                    <DoubleAnimation
+                                    Storyboard.TargetName="__CameraAngle" 
+                                    Storyboard.TargetProperty="Angle"
+                                    From="0" To="360" Duration="0:1:0" RepeatBehavior="Forever" />-->
+                    <DoubleAnimation
+                                    Storyboard.TargetName="__Serpentine" 
+                                    Storyboard.TargetProperty="NumRevolutions"
+                                    From="0" To="4" Duration="0:0:20" RepeatBehavior="Forever" />
+                </Storyboard>
+            </BeginStoryboard>
+        </EventTrigger>
+    </Window.Triggers>
 </Window>
