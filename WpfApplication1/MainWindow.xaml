@@ -50,7 +50,7 @@
                     </ModelVisual3D>
                     <ModelVisual3D>
                         <ModelVisual3D.Content>
-                            <GeometryModel3D Geometry="{Binding Mesh}">
+                            <GeometryModel3D x:Name="RedOne" Geometry="{Binding Mesh}">
                                 <GeometryModel3D.Material>
                                     <DiffuseMaterial Brush="Red"/>
                                 </GeometryModel3D.Material>
@@ -161,10 +161,10 @@
                                     Storyboard.TargetName="__CameraAngle" 
                                     Storyboard.TargetProperty="Angle"
                                     From="0" To="360" Duration="0:1:0" RepeatBehavior="Forever" />-->
-                    <DoubleAnimation
+                    <!--<DoubleAnimation
                                     Storyboard.TargetName="__Serpentine" 
                                     Storyboard.TargetProperty="NumRevolutions"
-                                    From="0" To="4" Duration="0:0:20" RepeatBehavior="Forever" />
+                                    From="0" To="4" Duration="0:0:20" RepeatBehavior="Forever" />-->
                 </Storyboard>
             </BeginStoryboard>
         </EventTrigger>

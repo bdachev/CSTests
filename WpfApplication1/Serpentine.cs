@@ -106,7 +106,7 @@ namespace WpfApplication1
             return new Point3D(x, y, z);
         }
 
-        void AddSegment(MeshGeometry3D mesh, int segment)
+        public void AddSegment(MeshGeometry3D mesh, int segment)
         {
             var ps = GetSegmentPoint(segment);
             Vector3D oY;
