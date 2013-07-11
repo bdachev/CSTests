@@ -7,7 +7,7 @@ using System.Windows;
 using System.Windows.Markup;
 using System.Windows.Media.Media3D;
 
-namespace WpfApplication1
+namespace Test3D
 {
     [RuntimeNameProperty("Name")]
     public class Serpentine : DependencyObject
