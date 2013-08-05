@@ -1,0 +1,11 @@
+﻿<Window x:Class="TestSharpDX.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sdxw="clr-namespace:SharpDX.Windows;assembly=SharpDX"
+        Title="MainWindow" Height="350" Width="525">
+    <Grid>
+        <WindowsFormsHost>
+            <sdxw:RenderControl x:Name="__RenderControl"/>
+        </WindowsFormsHost>
+    </Grid>
+</Window>

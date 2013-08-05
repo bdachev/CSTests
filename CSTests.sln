@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConsoleApplication1", "Cons
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Test3D", "Test3D\Test3D.csproj", "{87778BE3-186D-438A-9CCB-C26A69731D8F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestSharpDX", "TestSharpDX\TestSharpDX.csproj", "{3C5D0274-2C61-4E0B-BAE2-A30BF74067C6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -31,6 +33,10 @@ Global
 		{87778BE3-186D-438A-9CCB-C26A69731D8F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{87778BE3-186D-438A-9CCB-C26A69731D8F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{87778BE3-186D-438A-9CCB-C26A69731D8F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3C5D0274-2C61-4E0B-BAE2-A30BF74067C6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3C5D0274-2C61-4E0B-BAE2-A30BF74067C6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3C5D0274-2C61-4E0B-BAE2-A30BF74067C6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3C5D0274-2C61-4E0B-BAE2-A30BF74067C6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
