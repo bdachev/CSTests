@@ -5,6 +5,29 @@
         xmlns:l="clr-namespace:WpfApplication1"
         Title="MainWindow" Height="350" Width="525"
         x:Name="mainWindow">
+    <Window.Resources>
+        <XmlDataProvider x:Key="data" XPath="Items">
+            <x:XData>
+                <Items xmlns="">
+                    <Item Name="h1">
+                        <Item Name="h2"/>
+                        <Item Name="h2"/>
+                        <Item Name="h2"/>
+                    </Item>
+                    <Item Name="h1">
+                        <Item Name="h2"/>
+                        <Item Name="h2"/>
+                        <Item Name="h2"/>
+                    </Item>
+                    <Item Name="h1">
+                        <Item Name="h2"/>
+                        <Item Name="h2"/>
+                        <Item Name="h2"/>
+                    </Item>
+                </Items>
+            </x:XData>
+        </XmlDataProvider>
+    </Window.Resources>
     <DockPanel>
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="File">
@@ -20,6 +43,6 @@
                 <Button>Btn2</Button>
             </ToolBar>
         </ToolBarTray>
-        <TextBox/>
+        <l:MyTreeView ItemsSource="{Binding XPath=*, Source={StaticResource data}}"/>
     </DockPanel>
 </Window>
