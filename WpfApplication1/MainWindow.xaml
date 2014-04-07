@@ -27,6 +27,15 @@
                 </Items>
             </x:XData>
         </XmlDataProvider>
+        <XmlDataProvider x:Key="xmlData" XPath="Items">
+            <x:XData>
+                <Items xmlns="">
+                    <Item Text="Text" />
+                    <Item Text="Text" />
+                    <Item Text="Text" />
+                </Items>
+            </x:XData>
+        </XmlDataProvider>
     </Window.Resources>
     <DockPanel>
         <Menu DockPanel.Dock="Top">
@@ -43,6 +52,35 @@
                 <Button>Btn2</Button>
             </ToolBar>
         </ToolBarTray>
-        <l:MyTreeView ItemsSource="{Binding XPath=*, Source={StaticResource data}}"/>
+        <l:MyTreeView DockPanel.Dock="Top" ItemsSource="{Binding XPath=*, Source={StaticResource data}}"/>
+        <ComboBox DockPanel.Dock="Top" Text="text" IsEditable="False" IsReadOnly="True">
+            <ComboBoxItem>a</ComboBoxItem>
+            <ComboBoxItem>b</ComboBoxItem>
+            <ComboBoxItem>c</ComboBoxItem>
+            <ComboBoxItem>f</ComboBoxItem>
+        </ComboBox>
+        <DataGrid DockPanel.Dock="Bottom" ItemsSource="{Binding XPath=*,Source={StaticResource xmlData}}" AutoGenerateColumns="False">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Text" Binding="{Binding XPath=@Text}"/>
+                <DataGridTemplateColumn Header="Template">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding XPath=@Text}"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                    <DataGridTemplateColumn.CellEditingTemplate>
+                        <DataTemplate>
+                            <ComboBox Text="{Binding XPath=@Text}" IsEditable="True" IsReadOnly="True">
+                                <ComboBoxItem>a</ComboBoxItem>
+                                <ComboBoxItem>b</ComboBoxItem>
+                                <ComboBoxItem>c</ComboBoxItem>
+                                <ComboBoxItem>f</ComboBoxItem>
+                            </ComboBox>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellEditingTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+
     </DockPanel>
 </Window>
