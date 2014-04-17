@@ -18,7 +18,8 @@ namespace ConsoleApplication1
         enum TokenType
         {
             String,
-            Number,
+            Double,
+            Integer,
             HexNumber,
             Identifier,
             Keyword,
@@ -44,7 +45,8 @@ namespace ConsoleApplication1
 
         static Regex regTokens = new Regex(@"(?:(?'str'""(?:[^""]|"""")*"")|" +
                                             @"(?'hex'(?i:0x[\da-f]+))|" +
-                                            @"(?'num'\d+(?:\.\d+)?)|" +
+                                            @"(?'double'(?:\d*\.)?\d+[eE][-+]?\d+|\d*\.\d+)|" +
+                                            @"(?'int'\d+)|" +
                                             @"(?'kwd'sub|var|for|if|else|while)|" +
                                             @"(?'id'[\w_][\w\d_]*)|" +
                                             @"(?'sym'[-+*/%&^|<>!=]=|&&|\|\||<<|>>|[-+~/*%&^|?:=(){};,<>]))", RegexOptions.Compiled);
@@ -53,7 +55,7 @@ namespace ConsoleApplication1
         {
             Token first = null;
             Token last = null;
-            if (lines!=null && lines.Length>0)
+            if (lines != null && lines.Length > 0)
             {
                 for (int line = 0; line < lines.Length; line++)
                 {
@@ -67,8 +69,10 @@ namespace ConsoleApplication1
                             var groups = match.Groups;
                             if (groups["str"].Success)
                                 token = new Token(TokenType.String, match.Value, line, match.Index);
-                            else if (groups["num"].Success)
-                                token = new Token(TokenType.Number, match.Value, line, match.Index);
+                            else if (groups["double"].Success)
+                                token = new Token(TokenType.Double, match.Value, line, match.Index);
+                            else if (groups["int"].Success)
+                                token = new Token(TokenType.Integer, match.Value, line, match.Index);
                             else if (groups["hex"].Success)
                                 token = new Token(TokenType.HexNumber, match.Value, line, match.Index);
                             else if (groups["kwd"].Success)
@@ -97,12 +101,12 @@ namespace ConsoleApplication1
         class ParserException : ApplicationException
         {
             public ParserException(Token token, string message) :
-                base(token==null ? message : string.Format( "({0},{1}): {2}", token.Line + 1, token.Column + 1, message)) { }
+                base(token == null ? message : string.Format("({0},{1}): {2}", token.Line + 1, token.Column + 1, message)) { }
         }
         class ExecutionException : ApplicationException
         {
             public ExecutionException(Token token, string message) :
-                base(token==null ? message : string.Format( "({0},{1}): {2}", token.Line + 1, token.Column + 1, message)) { }
+                base(token == null ? message : string.Format("({0},{1}): {2}", token.Line + 1, token.Column + 1, message)) { }
         }
 
         const string _errUnexpectedEndOfFile = "unexpected end of file";
@@ -114,6 +118,8 @@ namespace ConsoleApplication1
         const string _errfmt_0_Expected = "{0} expected";
         const string _errfmtVariable_0_AlreadyDefined = "variable {0} already defined";
         const string _errfmtVariable_0_NotDefined = "variable {0} not defined";
+        const string _errfmtFailedToApply_0_operator = "failed to apply {0} operator";
+        const string _errBooleanValueExpected = "boolean value expected";
         #endregion errors
 
         #region expressions
@@ -126,144 +132,73 @@ namespace ConsoleApplication1
             {
                 Calculate(context);
             }
-            public abstract double Calculate(Context context);
+            public abstract Value Calculate(Context context);
         }
 
         #region unary and binary operators
 
+
         class BaseOp
         {
-            public readonly string Op;
+            public Token StartToken { get; set; }
+            public string OpName { get; private set; }
+            public BaseOp(string opName) { OpName = opName; }
 
-            public BaseOp(string op)
+            protected Value CheckValueNotNull(Value value)
             {
-                Op = op;
+                if (value == null)
+                    throw new ExecutionException(StartToken, string.Format(_errfmtFailedToApply_0_operator, OpName));
+                return value;
             }
         }
 
         abstract class BinOp : BaseOp
         {
-            public BinOp(string op) : base(op) { }
+            public BinOp(string opName) : base(opName) { }
+            public abstract Value Apply(Context context, Expr Left, Expr Right);
+        }
 
-            public abstract double Apply(double left, double right);
+        class BinOpDelegates : BinOp
+        {
+            public Func<ValueDouble, ValueDouble, Value> OpDouble { get; private set; }
+            public Func<ValueInt, ValueInt, Value> OpInt { get; private set; }
+            public Func<bool, bool, bool> OpBool { get; private set; }
+            public Func<ValueString, ValueString, Value> OpString { get; private set; }
 
-            public virtual double Apply(Context context, Expr Left, Expr Right)
+            public BinOpDelegates(string opName,
+                         Func<ValueDouble, ValueDouble, Value> opDouble,
+                         Func<ValueInt, ValueInt, Value> opInt,
+                         Func<bool, bool, bool> opBool = null,
+                         Func<ValueString, ValueString, Value> opString = null)
+                : base(opName)
             {
-                return Apply(Left.Calculate(context), Right.Calculate(context));
+                OpDouble = opDouble;
+                OpInt = opInt;
+                OpBool = opBool;
+                OpString = opString;
             }
-        }
 
-        class BinOpMul : BinOp
-        {
-            public BinOpMul() : base("*") { }
-            public override double Apply(double left, double right) { return left * right; }
-        }
+            public BinOp Clone() { return (BinOp)MemberwiseClone(); }
 
-        class BinOpDiv : BinOp
-        {
-            public BinOpDiv() : base("/") { }
-            public override double Apply(double left, double right) { return left / right; }
-        }
-
-        class BinOpMod : BinOp
-        {
-            public BinOpMod() : base("%") { }
-            public override double Apply(double left, double right) { return left % right; }
-        }
-
-        class BinOpAdd : BinOp
-        {
-            public BinOpAdd() : base("+") { }
-            public override double Apply(double left, double right) { return left + right; }
-        }
-
-        class BinOpSub : BinOp
-        {
-            public BinOpSub() : base("-") { }
-            public override double Apply(double left, double right) { return left - right; }
-        }
-
-        class BinOpShL : BinOp
-        {
-            public BinOpShL() : base("<<") { }
-            public override double Apply(double left, double right) { return (int)left << (int)right; }
-        }
-
-        class BinOpShR : BinOp
-        {
-            public BinOpShR() : base(">>") { }
-            public override double Apply(double left, double right) { return (int)left >> (int)right; }
-        }
-
-        class BinOpLess : BinOp
-        {
-            public BinOpLess() : base("<") { }
-            public override double Apply(double left, double right) { return left < right ? 1.0 : 0.0; }
-        }
-
-        class BinOpMore : BinOp
-        {
-            public BinOpMore() : base(">") { }
-            public override double Apply(double left, double right) { return left > right ? 1.0 : 0.0; }
-        }
-
-        class BinOpLessEq : BinOp
-        {
-            public BinOpLessEq() : base("<=") { }
-            public override double Apply(double left, double right) { return left <= right ? 1.0 : 0.0; }
-        }
-
-        class BinOpMoreEq : BinOp
-        {
-            public BinOpMoreEq() : base(">=") { }
-            public override double Apply(double left, double right) { return left >= right ? 1.0 : 0.0; }
-        }
-
-        class BinOpEq : BinOp
-        {
-            public BinOpEq() : base("==") { }
-            public override double Apply(double left, double right) { return left == right ? 1.0 : 0.0; }
-        }
-
-        class BinOpNotEq : BinOp
-        {
-            public BinOpNotEq() : base("!=") { }
-            public override double Apply(double left, double right) { return left != right ? 1.0 : 0.0; }
-        }
-
-        class BinOpAnd : BinOp
-        {
-            public BinOpAnd() : base("&") { }
-            public override double Apply(double left, double right) { return (int)left & (int)right; }
-        }
-
-        class BinOpXor : BinOp
-        {
-            public BinOpXor() : base("^") { }
-            public override double Apply(double left, double right) { return (int)left ^ (int)right; }
-        }
-
-        class BinOpOr : BinOp
-        {
-            public BinOpOr() : base("|") { }
-            public override double Apply(double left, double right) { return (int)left | (int)right; }
+            public override Value Apply(Context context, Expr Left, Expr Right)
+            {
+                return Value.ApplyBinOp(StartToken, this, Left.Calculate(context), Right.Calculate(context));
+            }
         }
 
         class BinOpLogAnd : BinOp
         {
             public BinOpLogAnd() : base("&&") { }
-            public override double Apply(double left, double right) { return 0.0; }
-            public override double Apply(Context context, Expr Left, Expr Right)
+
+            public override Value Apply(Context context, Expr Left, Expr Right)
             {
-                double leftValue = Left.Calculate(context);
-                if (leftValue != 0.0)
+                if (Left.Calculate(context).AsBool)
                 {
-                    double rightValue = Right.Calculate(context);
-                    return rightValue != 0.0 ? 1.0 : 0.0;
+                    return ValueBool.Box(Right.Calculate(context).AsBool);
                 }
                 else
                 {
-                    return 0.0;
+                    return ValueBool.False;
                 }
             }
         }
@@ -271,45 +206,62 @@ namespace ConsoleApplication1
         class BinOpLogOr : BinOp
         {
             public BinOpLogOr() : base("||") { }
-            public override double Apply(double left, double right) { return 0.0; }
-            public override double Apply(Context context, Expr Left, Expr Right)
+            public override Value Apply(Context context, Expr Left, Expr Right)
             {
-                double leftValue = Left.Calculate(context);
-                if (leftValue == 0.0)
+                if (Left.Calculate(context).AsBool)
                 {
-                    double rightValue = Right.Calculate(context);
-                    return rightValue != 0.0 ? 1.0 : 0.0;
+                    return ValueBool.True;
                 }
                 else
                 {
-                    return 1.0;
+                    return ValueBool.Box(Right.Calculate(context).AsBool);
                 }
             }
         }
 
         abstract class UnOp : BaseOp
         {
-            public UnOp(string op) : base(op) { }
+            public UnOp(string opName) : base(opName) { }
 
-            public abstract double Apply(double innerValue);
+            public UnOp Clone() { return (UnOp)MemberwiseClone(); }
+
+            public abstract Value Apply(Value innerValue);
         }
 
         class UnOpLogNeg : UnOp
         {
             public UnOpLogNeg() : base("!") { }
-            public override double Apply(double innerValue) { return innerValue == 0.0 ? 1.0 : 0.0; }
+            public override Value Apply(Value innerValue)
+            {
+                return ValueBool.Box(!innerValue.AsBool);
+            }
         }
 
         class UnOpNeg : UnOp
         {
             public UnOpNeg() : base("-") { }
-            public override double Apply(double innerValue) { return -innerValue; }
+            public override Value Apply(Value innerValue)
+            {
+                var valueInt = innerValue as ValueInt;
+                if (valueInt != null)
+                    return new ValueInt(-valueInt.Value);
+                var valueDouble = innerValue as ValueDouble;
+                if (valueDouble != null)
+                    return new ValueDouble(-valueDouble.Value);
+                return CheckValueNotNull(null);
+            }
         }
 
         class UnOpCompl : UnOp
         {
             public UnOpCompl() : base("~") { }
-            public override double Apply(double innerValue) { return ~(int)innerValue; }
+            public override Value Apply(Value innerValue)
+            {
+                var valueInt = innerValue as ValueInt;
+                if (valueInt != null)
+                    return new ValueInt(~valueInt.Value);
+                return CheckValueNotNull(null);
+            }
         }
 
         abstract class OpHelper
@@ -332,12 +284,14 @@ namespace ConsoleApplication1
                 var startToken = token;
                 foreach (var op in Ops)
                 {
-                    if (MatchSymbol(ref token, op.Op, false))
+                    if (MatchSymbol(ref token, op.OpName, false))
                     {
                         var expr = Match(ref token);
                         if (expr == null)
                             throw new ParserException(token, _errSubExpressionExpected);
 
+                        var opCopy = op.Clone();
+                        opCopy.StartToken = startToken;
                         return new Expr_UnOp(startToken, op, expr);
                     }
                 }
@@ -371,33 +325,52 @@ namespace ConsoleApplication1
                     opFound = false;
                     foreach (var op in Ops)
                     {
-                        if (MatchSymbol(ref token, op.Op, false))
+                        var symbolToken = token;
+                        if (MatchSymbol(ref token, op.OpName, false))
                         {
                             var right = Next.Match(ref token);
                             if (right == null)
                                 throw new ParserException(token, _errSubExpressionExpected);
 
-                            left = new Expr_BinOp(startToken, op, left, right);
+                            var opCopy = op;
+                            opCopy.StartToken = symbolToken;
+                            left = new Expr_BinOp(startToken, opCopy, left, right);
                             opFound = true;
                             break;
                         }
                     }
                 }
                 while (opFound);
-                
+
                 return left;
             }
         }
 
         static UnaryOpHelper _unaryOp = new UnaryOpHelper(new UnOpNeg(), new UnOpLogNeg(), new UnOpCompl());
-        static BinOpHelper _binaryMulOpHelper = new BinOpHelper(_unaryOp, new BinOpMul(), new BinOpDiv(), new BinOpMod());
-        static BinOpHelper _binaryAddOpHelper = new BinOpHelper(_binaryMulOpHelper, new BinOpAdd(), new BinOpSub());
-        static BinOpHelper _binaryShiftOpHelper = new BinOpHelper(_binaryAddOpHelper, new BinOpShL(), new BinOpShR());
-        static BinOpHelper _binaryRelOpHelper = new BinOpHelper(_binaryShiftOpHelper, new BinOpLess(), new BinOpMore(), new BinOpLessEq(), new BinOpMoreEq());
-        static BinOpHelper _binaryEqOpHelper = new BinOpHelper(_binaryRelOpHelper, new BinOpEq(), new BinOpNotEq());
-        static BinOpHelper _binaryAndOpHelper = new BinOpHelper(_binaryEqOpHelper, new BinOpAdd());
-        static BinOpHelper _binaryXorOpHelper = new BinOpHelper(_binaryAndOpHelper, new BinOpXor());
-        static BinOpHelper _binaryOrOpHelper = new BinOpHelper(_binaryXorOpHelper, new BinOpOr());
+        static BinOpHelper _binaryMulOpHelper = new BinOpHelper(_unaryOp,
+            new BinOpDelegates("*", (ValueDouble l, ValueDouble r) => new ValueDouble(l.Value * r.Value), (ValueInt l, ValueInt r) => new ValueInt(l.Value * r.Value)),
+            new BinOpDelegates("/", (ValueDouble l, ValueDouble r) => new ValueDouble(l.Value / r.Value), (ValueInt l, ValueInt r) => new ValueInt(l.Value / r.Value)),
+            new BinOpDelegates("%", (ValueDouble l, ValueDouble r) => new ValueDouble(l.Value % r.Value), (ValueInt l, ValueInt r) => new ValueInt(l.Value % r.Value)));
+        static BinOpHelper _binaryAddOpHelper = new BinOpHelper(_binaryMulOpHelper,
+            new BinOpDelegates("+", (ValueDouble l, ValueDouble r) => new ValueDouble(l.Value + r.Value), (ValueInt l, ValueInt r) => new ValueInt(l.Value + r.Value), null , (ValueString l, ValueString r) => new ValueString(l.Value + r.Value)),
+            new BinOpDelegates("-", (ValueDouble l, ValueDouble r) => new ValueDouble(l.Value - r.Value), (ValueInt l, ValueInt r) => new ValueInt(l.Value - r.Value)));
+        static BinOpHelper _binaryShiftOpHelper = new BinOpHelper(_binaryAddOpHelper,
+            new BinOpDelegates("<<", null, (ValueInt l, ValueInt r) => new ValueInt(l.Value << r.Value)),
+            new BinOpDelegates(">>", null, (ValueInt l, ValueInt r) => new ValueInt(l.Value >> r.Value)));
+        static BinOpHelper _binaryRelOpHelper = new BinOpHelper(_binaryShiftOpHelper,
+            new BinOpDelegates("<", (ValueDouble l, ValueDouble r) => new ValueBool(l.Value < r.Value), (ValueInt l, ValueInt r) => new ValueBool(l.Value < r.Value)),
+            new BinOpDelegates(">", (ValueDouble l, ValueDouble r) => new ValueBool(l.Value > r.Value), (ValueInt l, ValueInt r) => new ValueBool(l.Value > r.Value)),
+            new BinOpDelegates("<=", (ValueDouble l, ValueDouble r) => new ValueBool(l.Value <= r.Value), (ValueInt l, ValueInt r) => new ValueBool(l.Value <= r.Value)),
+            new BinOpDelegates(">=", (ValueDouble l, ValueDouble r) => new ValueBool(l.Value >= r.Value), (ValueInt l, ValueInt r) => new ValueBool(l.Value >= r.Value)));
+        static BinOpHelper _binaryEqOpHelper = new BinOpHelper(_binaryRelOpHelper,
+            new BinOpDelegates("==", (ValueDouble l, ValueDouble r) => new ValueBool(l.Value == r.Value), (ValueInt l, ValueInt r) => new ValueBool(l.Value == r.Value), (bool l, bool r) => l == r, (ValueString l, ValueString r) => new ValueBool(l.Value == r.Value)),
+            new BinOpDelegates("!=", (ValueDouble l, ValueDouble r) => new ValueBool(l.Value != r.Value), (ValueInt l, ValueInt r) => new ValueBool(l.Value != r.Value), (bool l, bool r) => l != r, (ValueString l, ValueString r) => new ValueBool(l.Value != r.Value)));
+        static BinOpHelper _binaryAndOpHelper = new BinOpHelper(_binaryEqOpHelper,
+            new BinOpDelegates("&", null, (ValueInt l, ValueInt r) => new ValueInt(l.Value & r.Value), (bool l, bool r) => l & r));
+        static BinOpHelper _binaryXorOpHelper = new BinOpHelper(_binaryAndOpHelper,
+            new BinOpDelegates("^", null, (ValueInt l, ValueInt r) => new ValueInt(l.Value ^ r.Value), (bool l, bool r) => l ^ r));
+        static BinOpHelper _binaryOrOpHelper = new BinOpHelper(_binaryXorOpHelper,
+            new BinOpDelegates("|", null, (ValueInt l, ValueInt r) => new ValueInt(l.Value | r.Value), (bool l, bool r) => l | r));
         static BinOpHelper _binaryLogAndOpHelper = new BinOpHelper(_binaryOrOpHelper, new BinOpLogAnd());
         static BinOpHelper _binaryLogOrOpHelper = new BinOpHelper(_binaryOrOpHelper, new BinOpLogOr());
 
@@ -412,9 +385,9 @@ namespace ConsoleApplication1
                 Expr = Expr;
             }
 
-            public override double Calculate(Context context)
+            public override Value Calculate(Context context)
             {
-                double innerValue = Expr.Calculate(context);
+                Value innerValue = Expr.Calculate(context);
                 return Oper.Apply(innerValue);
             }
         }
@@ -432,7 +405,7 @@ namespace ConsoleApplication1
                 Right = right;
             }
 
-            public override double Calculate(Context context)
+            public override Value Calculate(Context context)
             {
                 return Oper.Apply(context, Left, Right);
             }
@@ -448,7 +421,7 @@ namespace ConsoleApplication1
                 Name = name;
             }
 
-            public override double Calculate(Context context)
+            public override Value Calculate(Context context)
             {
                 var var = context.GetVariable(Name, true);
                 if (var == null)
@@ -460,83 +433,26 @@ namespace ConsoleApplication1
 
         class Expr_Const : Expr
         {
-            public double Value { get; private set; }
-            public Expr_Const(Token startToken, double value)
+            public Value Value { get; private set; }
+            public Expr_Const(Token startToken, Value value)
                 : base(startToken)
             {
                 Value = value;
             }
 
-            public override double Calculate(Context context) { return Value; }
+            public override Value Calculate(Context context) { return Value; }
         }
 
         #region assignment
-        abstract class AssignOp : BaseOp
-        {
-            public AssignOp(string op) : base(op) { }
-
-            public abstract void Apply(Variable var, double value);
-        }
-
-        class AssignOpSimple : AssignOp
-        {
-            public AssignOpSimple() : base("=") { }
-
-            public override void Apply(Variable var, double value) { var.Value = value; }
-        }
-
-        class AssignOpMul : AssignOp
-        {
-            public AssignOpMul() : base("*=") { }
-            public override void Apply(Variable var, double value) { var.Value *= value; }
-        }
-
-        class AssignOpDiv : AssignOp
-        {
-            public AssignOpDiv() : base("/=") { }
-            public override void Apply(Variable var, double value) { var.Value /= value; }
-        }
-
-        class AssignOpMod : AssignOp
-        {
-            public AssignOpMod() : base("%=") { }
-            public override void Apply(Variable var, double value) { var.Value %= value; }
-        }
-
-        class AssignOpAdd : AssignOp
-        {
-            public AssignOpAdd() : base("+=") { }
-            public override void Apply(Variable var, double value) { var.Value += value; }
-        }
-
-        class AssignOpSub : AssignOp
-        {
-            public AssignOpSub() : base("-=") { }
-            public override void Apply(Variable var, double value) { var.Value -= value; }
-        }
-
         class Expr_Assign : Expr
         {
             public string VarName { get; private set; }
-            public AssignOp Op { get; private set; }
             public Expr Expr { get; private set; }
-            public static AssignOp[] Ops = new AssignOp[]
-            {
-                new AssignOpSimple(),
 
-                new AssignOpMul(),
-                new AssignOpDiv(),
-                new AssignOpMod(),
-
-                new AssignOpSub(),
-                new AssignOpAdd(),
-            };
-
-            public Expr_Assign(Token startToken, string varName, AssignOp op, Expr expr)
+            public Expr_Assign(Token startToken, string varName, Expr expr)
                 : base(startToken)
             {
                 VarName = varName;
-                Op = op;
                 Expr = expr;
             }
 
@@ -548,37 +464,31 @@ namespace ConsoleApplication1
                 if (varName == null)
                     return null;
 
-                foreach (var op in Expr_Assign.Ops)
+                if (MatchSymbol(ref token_copy, "=", false))
                 {
-                    if (MatchSymbol(ref token_copy, "=", false))
-                    {
-                        // expression expected
-                        var expr = MatchExpr(ref token_copy);
+                    // expression expected
+                    var expr = MatchExpr(ref token_copy);
 
-                        // use token copy
-                        token = token_copy;
-                        return new Expr_Assign(startToken, varName, op, expr);
-                    }
+                    // use token copy
+                    token = token_copy;
+                    return new Expr_Assign(startToken, varName, expr);
                 }
 
-               return null;
+                return null;
             }
 
-            public override double Calculate(Context context)
+            public override Value Calculate(Context context)
             {
                 var var = context.GetVariable(VarName, true);
                 if (var == null)
                     throw new ExecutionException(StartToken, string.Format(_errfmtVariable_0_NotDefined, VarName));
 
-                double value = Expr.Calculate(context);
-                
-                Op.Apply(var, value);
-                
-                return var.Value;
+                return var.Value = Expr.Calculate(context);
             }
         }
         #endregion assignment
 
+        #region condition
         class Expr_Cond : Expr
         {
             public Expr Cond { get; private set; }
@@ -613,10 +523,10 @@ namespace ConsoleApplication1
                     return cond;
                 }
             }
-            public override double Calculate(Context context)
+            public override Value Calculate(Context context)
             {
-                double cond = Cond.Calculate(context);
-                if (cond != 0.0)
+                var cond = Cond.Calculate(context);
+                if (cond.AsBool)
                 {
                     return ExprTrue.Calculate(context);
                 }
@@ -626,6 +536,7 @@ namespace ConsoleApplication1
                 }
             }
         }
+        #endregion condition
 
         static Expr MatchPrimExpr(ref Token token)
         {
@@ -636,21 +547,37 @@ namespace ConsoleApplication1
             {
                 return new Expr_Ident(startToken, varName);
             }
-            // check for literal
-            if (token.Type == TokenType.Number)
+            // check for string literal
+            if (token.Type == TokenType.String)
+            {
+                startToken = token;
+                string sValue = token.Value;
+                token = token.Next;
+                return new Expr_Const(startToken, new ValueString(sValue));
+            }
+            // check for integer literal
+            if (token.Type == TokenType.Double)
             {
                 startToken = token;
                 double dValue = double.Parse(token.Value, CultureInfo.InvariantCulture);
                 token = token.Next;
-                return new Expr_Const(startToken, dValue);
+                return new Expr_Const(startToken, new ValueDouble(dValue));
             }
-            // check for literal
+            // check for int literal
+            if (token.Type == TokenType.Integer)
+            {
+                startToken = token;
+                int iValue = int.Parse(token.Value);
+                token = token.Next;
+                return new Expr_Const(startToken, new ValueInt(iValue));
+            }
+            // check for hex literal
             if (token.Type == TokenType.HexNumber)
             {
                 startToken = token;
                 int iValue = int.Parse(token.Value.Substring(2), NumberStyles.HexNumber);
                 token = token.Next;
-                return new Expr_Const(startToken, iValue);
+                return new Expr_Const(startToken, new ValueInt(iValue));
             }
 
             MatchSymbol(ref token, "(", true);
@@ -672,11 +599,136 @@ namespace ConsoleApplication1
         }
         #endregion expressions
 
+        abstract class Value
+        {
+            public static Value ApplyBinOp(Token startToken, BinOpDelegates binOp, Value value1, Value value2)
+            {
+                var value = ValueInt.TryApplyBinOp(startToken, binOp, value1, value2) ??
+                            ValueDouble.TryApplyBinOp(startToken, binOp, value1, value2) ??
+                            ValueString.TryApplyBinOp(startToken, binOp, value1, value2) ??
+                            ValueBool.TryApplyBinOp(startToken, binOp, value1, value2);
+                if (value == null)
+                    throw new ExecutionException(startToken, string.Format(_errfmtFailedToApply_0_operator, binOp.OpName));
+                return value;
+            }
+
+            public abstract bool AsBool { get; }
+        }
+
+        class ValueBool : Value
+        {
+            public readonly static ValueBool True = new ValueBool(true);
+            public readonly static ValueBool False = new ValueBool(false);
+
+            public static ValueBool Box(bool value) { return value ? True : False; }
+
+            public bool Value { get; private set; }
+            public ValueBool(bool value)
+            {
+                Value = value;
+            }
+
+            public static Value TryApplyBinOp(Token startToken, BinOpDelegates binOp, Value value1, Value value2)
+            {
+                if (binOp.OpBool == null)
+                    return null;
+                bool b1 = value1.AsBool;
+                bool b2 = value2.AsBool;
+
+                return ValueBool.Box(binOp.OpBool(b1, b2));
+            }
+
+            public override bool AsBool { get { return Value; } }
+        }
+
+        class ValueInt : Value
+        {
+            public int Value { get; private set; }
+            public ValueInt(int value)
+            {
+                Value = value;
+            }
+            public static Value TryApplyBinOp(Token startToken, BinOpDelegates binOp, Value value1, Value value2)
+            {
+                if (binOp.OpInt == null)
+                    return null;
+
+                var i1 = value1 as ValueInt;
+                var i2 = value2 as ValueInt;
+                if (i1 == null || i2 == null)
+                    return null;
+
+                return binOp.OpInt(i1, i2);
+            }
+
+            public override bool AsBool { get { return Value != 0; } }
+        }
+
+        class ValueDouble : Value
+        {
+            public double Value { get; private set; }
+            public ValueDouble(double value)
+            {
+                Value = value;
+            }
+            public static Value TryApplyBinOp(Token startToken, BinOpDelegates binOp, Value value1, Value value2)
+            {
+                if (binOp.OpDouble == null)
+                    return null;
+
+                var d1 = value1 as ValueDouble;
+                var d2 = value2 as ValueDouble;
+                if (d1 == null)
+                {
+                    var i1 = value1 as ValueInt;
+                    if (i1 != null)
+                        d1 = new ValueDouble(i1.Value);
+                    return null;
+                }
+                if (d2 == null)
+                {
+                    var i2 = value2 as ValueInt;
+                    if (i2 != null)
+                        d2 = new ValueDouble(i2.Value);
+                    return null;
+                }
+                if (d1 == null || d2 == null)
+                    return null;
+
+                return binOp.OpDouble(d1, d2);
+            }
+
+            public override bool AsBool { get { return Value != 0; } }
+        }
+
+        class ValueString : Value
+        {
+            public string Value { get; private set; }
+            public ValueString(string value)
+            {
+                Value = value;
+            }
+            public static Value TryApplyBinOp(Token startToken, BinOpDelegates binOp, Value value1, Value value2)
+            {
+                if (binOp.OpString == null)
+                    return null;
+
+                var d1 = value1 as ValueString;
+                var d2 = value2 as ValueString;
+                if (d1 == null || d2 == null)
+                    return null;
+
+                return binOp.OpString(d1, d2);
+            }
+
+            public override bool AsBool { get { return !string.IsNullOrEmpty(Value); } }
+        }
+
         class Variable
         {
             public string Name { get; private set; }
 
-            public double Value { get; set; }
+            public Value Value { get; set; }
 
             public Variable(string name)
             {
@@ -697,7 +749,7 @@ namespace ConsoleApplication1
 
             public Variable GetVariable(string name, bool searchParents)
             {
-                return Variables.FirstOrDefault(v => string.Equals(v.Name, name, StringComparison.OrdinalIgnoreCase)) ?? 
+                return Variables.FirstOrDefault(v => string.Equals(v.Name, name, StringComparison.OrdinalIgnoreCase)) ??
                         (searchParents && Parent != null ? Parent.GetVariable(name, true) : null);
             }
 
@@ -854,7 +906,7 @@ namespace ConsoleApplication1
 
                 // match )
                 MatchSymbol(ref token, ")", true);
-                
+
                 // match statement
                 var stmt = MatchStmt(ref token);
 
@@ -863,7 +915,7 @@ namespace ConsoleApplication1
 
             public override void Execute(Context context)
             {
-                for (Expr1.Calculate(context); Expr2.Calculate(context) != 0.0; Expr3.Calculate(context))
+                for (Expr1.Calculate(context); Expr2.Calculate(context).AsBool; Expr3.Calculate(context))
                     Stmt.Execute(context);
             }
         }
@@ -912,7 +964,7 @@ namespace ConsoleApplication1
 
             public override void Execute(Context context)
             {
-                if (Expr.Calculate(context) != 0.0)
+                if (Expr.Calculate(context).AsBool)
                 {
                     StmtThen.Execute(context);
                 }
@@ -959,7 +1011,7 @@ namespace ConsoleApplication1
 
             public override void Execute(Context context)
             {
-                while (Expr.Calculate(context) != 0.0)
+                while (Expr.Calculate(context).AsBool)
                 {
                     Stmt.Execute(context);
                 }
@@ -1017,7 +1069,7 @@ namespace ConsoleApplication1
             public override void Execute(Context context)
             {
                 throw new NotImplementedException();
-            } 
+            }
         }
         #endregion statements
 
@@ -1034,7 +1086,7 @@ namespace ConsoleApplication1
             }
             if (insist)
                 throw new ParserException(token, _errIdentifierExpected);
-            else 
+            else
                 return null;
         }
 
@@ -1150,7 +1202,10 @@ namespace ConsoleApplication1
                 var token = Tokenize(lines);
                 var script = Script.Parse(token);
                 var context = new Context(null);
-                context.AddVariable(null, "y");
+                var varX = context.AddVariable(null, "x");
+                varX.Value = new ValueString("o");
+                var varY = context.AddVariable(null, "y");
+                varY.Value = new ValueString("O");
                 script.Execute(context);
             }
             catch (Exception ex)
