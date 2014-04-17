@@ -827,15 +827,7 @@ namespace ConsoleApplication1
             }
         }
 
-        //private static void MoveToNextToken(ref Token token)
-        //{
-        //    var oldToken = token;
-        //    Debug.Assert(token != null);
-        //    token = token.Next;
-        //    if (token == null)
-        //        throw new ParserException(oldToken, _errUnexpectedEndOfFile);
-        //}
-
+        #region primitives
         private static string MatchIdent(ref Token token, bool insist)
         {
             if (token == null)
@@ -882,6 +874,7 @@ namespace ConsoleApplication1
                 return false;
             }
         }
+        #endregion primitives
 
         class Script
         {
