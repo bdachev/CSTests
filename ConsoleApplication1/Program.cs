@@ -92,7 +92,7 @@ namespace ConsoleApplication1
         class ParserException : ApplicationException
         {
             public ParserException(Token token, string message) :
-                base(string.Format("({0},{1}): {2}", token.Line, token.Column, message)) { }
+                base(token==null ? message : string.Format( "({0},{1}): {2}", token.Line + 1, token.Column + 1, message)) { }
         }
 
         const string _errUnexpectedEndOfFile = "unexpected end of file";
@@ -104,6 +104,7 @@ namespace ConsoleApplication1
         const string _errfmt_0_Expected = "{0} expected";
         #endregion errors
 
+        #region expressions
         class Expr
         {
         }
@@ -380,8 +381,9 @@ namespace ConsoleApplication1
             // check for literal
             if (token.Type == TokenType.Number)
             {
-                MoveToNextToken(ref token);
-                return new Expr_Const(token.Value);
+                var value = token.Value;
+                token = token.Next;
+                return new Expr_Const(value);
             }
 
             MatchSymbol(ref token, "(", true);
@@ -461,23 +463,25 @@ namespace ConsoleApplication1
 
             public static Expr_NumAssign Match(ref Token token)
             {
-                var varName = MatchIdent(ref token, false);
+                var token_copy = token;
+                var varName = MatchIdent(ref token_copy, false);
                 if (varName == null)
                     return null;
 
                 foreach (var op in Expr_NumAssign.Ops)
                 {
-                    if (MatchSymbol(ref token, "=", false))
+                    if (MatchSymbol(ref token_copy, "=", false))
                     {
-
                         // expression expected
-                        var expr = MatchExprNum(ref token);
+                        var expr = MatchExprNum(ref token_copy);
 
+                        // use token copy
+                        token = token_copy;
                         return new Expr_NumAssign(varName, expr);
                     }
                 }
 
-                throw new ParserException(token, _errAssignmentOperatorExpected);
+               return null;
             }
         }
 
@@ -533,13 +537,15 @@ namespace ConsoleApplication1
             }
             public static Expr_Str Match(ref Token token, Expr_Str left = null)
             {
+                if (token == null)
+                    throw new ParserException(null, _errUnexpectedEndOfFile);
                 if (token.Type != TokenType.String)
                     return null;
 
                 // store value
                 var expr = new Expr_Str(left, token.Value);
 
-                MoveToNextToken(ref token);
+                token = token.Next;
                 // try next for +
                 if (MatchSymbol(ref token, "+", false))
                 {
@@ -551,7 +557,9 @@ namespace ConsoleApplication1
                 }
             }
         }
+        #endregion expressions
 
+        #region statements
         class Stmt
         {
         }
@@ -774,6 +782,7 @@ namespace ConsoleApplication1
             public string SubName { get; set; }
             public readonly List<Expr> ParamValues = new List<Expr>();
         }
+        #endregion statements
 
         class Sub
         {
@@ -818,22 +827,23 @@ namespace ConsoleApplication1
             }
         }
 
-        private static void MoveToNextToken(ref Token token)
-        {
-            var oldToken = token;
-            Debug.Assert(token != null);
-            token = token.Next;
-            if (token == null)
-                throw new ParserException(oldToken, _errUnexpectedEndOfFile);
-        }
+        //private static void MoveToNextToken(ref Token token)
+        //{
+        //    var oldToken = token;
+        //    Debug.Assert(token != null);
+        //    token = token.Next;
+        //    if (token == null)
+        //        throw new ParserException(oldToken, _errUnexpectedEndOfFile);
+        //}
 
         private static string MatchIdent(ref Token token, bool insist)
         {
-            Debug.Assert(token != null);
+            if (token == null)
+                throw new ParserException(null, _errUnexpectedEndOfFile);
             if (token.Type == TokenType.Identifier)
             {
                 var value = token.Value;
-                MoveToNextToken(ref token);
+                token = token.Next;
                 return value;
             }
             if (insist)
@@ -844,10 +854,11 @@ namespace ConsoleApplication1
 
         private static bool MatchSymbol(ref Token token, string symbol, bool insist)
         {
-            Debug.Assert(token != null);
+            if (token == null)
+                throw new ParserException(null, _errUnexpectedEndOfFile);
             if (token.Type == TokenType.Symbol && token.Value == symbol)
             {
-                MoveToNextToken(ref token);
+                token = token.Next;
                 return true;
             }
 
@@ -859,10 +870,11 @@ namespace ConsoleApplication1
 
         private static bool MatchKeyword(ref Token token, string keyword)
         {
-            Debug.Assert(token != null);
+            if (token == null)
+                throw new ParserException(null, _errUnexpectedEndOfFile);
             if (token.Type == TokenType.Keyword && token.Value == keyword)
             {
-                MoveToNextToken(ref token);
+                token = token.Next;
                 return true;
             }
             else
