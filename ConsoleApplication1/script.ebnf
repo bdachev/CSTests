@@ -1,0 +1,89 @@
+letter = A | B | C | D | E | F | G | H | I | J | K | L | M 
+	   | N | O | P | Q | R | S | T | U | V | W | X | Y | Z 
+	   | a | b | c | d | e | f | g | h | i | j | k | l | m 
+	   | n | o | p | q | r | s | t | u | v | w | x | y | z.
+digit = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' .
+symbol = '[' | ']' | '{' | '}' | '(' | ')' | '<' | '>'
+       | "'" | '=' | '|' | '.' | ',' | ';' | '_' .
+dquote	= '"' .
+char_no_dquote = letter | digit | symbol .
+
+ident_first = letter | '_' .
+ident = ident_first { ident_first | digit }.
+string = '"' { char_no_dquote }  '"' .
+
+number = { digit } [ '.' { digit } ] .
+	   
+str_ex = str_ex '+' string 
+	   | string .                  
+	   
+num_ex = num_assign
+	   | cond_ex .
+		
+num_assign = ident num_assign_op num_ex .
+
+cond_ex = l_or_ex
+		| l_or_ex '?' cond_ex ':' cond_ex .
+
+l_or_ex = l_and_ex
+     	| l_or_ex '||' l_and_ex .
+
+l_and_ex = or_ex
+		 | l_and_ex '&&' or_ex .
+
+or_ex = xor_ex
+	  | or_ex '|' xor_ex .
+
+xor_ex = and_ex
+	   | xor_ex '^' and_ex .
+
+and_ex = eq_ex
+	   | and_ex '&' eq_ex .
+
+eq_op = '==' | '!=' .
+
+eq_ex = rel_ex 
+	  | eq_ex eq_op rel_ex .
+
+rel_op = '<' | '>' | '<=' | '>=' .
+	  
+rel_ex = shift_ex rel_op shift_ex .
+
+shift_op = '<<' | '>>' .
+
+shift_ex = add_ex
+		 | shift_ex shift_op add_ex .
+
+add_op = '+' | '-' .
+
+add_ex = mul_ex 
+	   | add_ex add_op mul_ex .
+
+mul_op = '*' | '/' | '%' .
+	   
+mul_ex = unary_ex
+	   | mul_ex  mul_op unary_ex .
+
+unary_ex = prim_ex
+		 | '-' unary_ex .
+
+prim_ex = ident 
+		| number
+		| '(' num_ex ')' .
+		 			  
+stmt = var ident '=' expr ';'
+     | str_assign ';'
+     | num_assign ';'
+	 | ident '(' ')' ';'
+	 | ident '(' expr {',' expr } ')' ';'
+	 | for '(' expr ';' expr ';' expr ')' stmt
+	 | if '(' expr ')' stmt [ else stmt ]
+	 | while '(' expr ')' stmt
+	 | block .
+	
+block = '{' { stmt } '}'
+	 
+sub = sub ident '(' ')' block
+	| sub ident '(' ident { ',' ident} ')' block .
+	 
+script = { stmt | sub } .

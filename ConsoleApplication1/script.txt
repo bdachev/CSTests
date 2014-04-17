@@ -1,5 +1,0 @@
-﻿var z = "blah blah1" + "blah blah2" + "blah blah3"; 
-var x = 0.1;
-var y = x + 0.2;
-for(x = 0; x < 5; x = x + 1)
-   y = y + x;
