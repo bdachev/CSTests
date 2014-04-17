@@ -19,6 +19,7 @@ namespace ConsoleApplication1
         {
             String,
             Number,
+            HexNumber,
             Identifier,
             Keyword,
             Symbol
@@ -42,6 +43,7 @@ namespace ConsoleApplication1
         }
 
         static Regex regTokens = new Regex(@"(?:(?'str'""(?:[^""]|"""")*"")|" +
+                                            @"(?'hex'(?i:0x[\da-f]+))|" +
                                             @"(?'num'\d+(?:\.\d+)?)|" +
                                             @"(?'kwd'sub|var|for|if|else|while)|" +
                                             @"(?'id'[\w_][\w\d_]*)|" +
@@ -67,6 +69,8 @@ namespace ConsoleApplication1
                                 token = new Token(TokenType.String, match.Value, line, match.Index);
                             else if (groups["num"].Success)
                                 token = new Token(TokenType.Number, match.Value, line, match.Index);
+                            else if (groups["hex"].Success)
+                                token = new Token(TokenType.HexNumber, match.Value, line, match.Index);
                             else if (groups["kwd"].Success)
                                 token = new Token(TokenType.Keyword, match.Value, line, match.Index);
                             else if (groups["id"].Success)
@@ -636,11 +640,17 @@ namespace ConsoleApplication1
             if (token.Type == TokenType.Number)
             {
                 startToken = token;
-                var value = token.Value;
-                double dValue;
-                dValue = double.Parse(value, CultureInfo.InvariantCulture);
+                double dValue = double.Parse(token.Value, CultureInfo.InvariantCulture);
                 token = token.Next;
                 return new Expr_Const(startToken, dValue);
+            }
+            // check for literal
+            if (token.Type == TokenType.HexNumber)
+            {
+                startToken = token;
+                int iValue = int.Parse(token.Value.Substring(2), NumberStyles.HexNumber);
+                token = token.Next;
+                return new Expr_Const(startToken, iValue);
             }
 
             MatchSymbol(ref token, "(", true);
@@ -691,7 +701,7 @@ namespace ConsoleApplication1
                         (searchParents && Parent != null ? Parent.GetVariable(name, true) : null);
             }
 
-            public void AddVariable(Token token, string name)
+            public Variable AddVariable(Token token, string name)
             {
                 var var = GetVariable(name, false);
                 if (var != null)
@@ -699,6 +709,7 @@ namespace ConsoleApplication1
 
                 var = new Variable(name);
                 Variables.Add(var);
+                return var;
             }
         }
 
@@ -730,11 +741,13 @@ namespace ConsoleApplication1
 
         class Stmt_DefVar : Stmt
         {
-            public Expr_Assign Expr { get; private set; }
+            public string VarName { get; private set; }
+            public Expr Expr { get; private set; }
 
-            public Stmt_DefVar(Token startToken, Expr_Assign expr)
+            public Stmt_DefVar(Token startToken, string varName, Expr expr)
                 : base(startToken)
             {
+                VarName = varName;
                 Expr = expr;
             }
 
@@ -744,27 +757,29 @@ namespace ConsoleApplication1
                 if (!MatchKeyword(ref token, "var"))
                     return null;
 
-                var token_copy = token;
                 // check for identifier
-                MatchIdent(ref token, true);
+                var varName = MatchIdent(ref token, true);
 
+                Expr expr = null;
                 // check for =
-                MatchSymbol(ref token, "=", true);
+                if (MatchSymbol(ref token, "=", false))
+                {
 
-                token = token_copy;
-                // consume assignment expression
-                var expr = Expr_Assign.Match(ref token);
+                    // consume assignment expression
+                    expr = Expr_Assign.Match(ref token);
+                }
 
                 // match ;
                 MatchSymbol(ref token, ";", true);
 
-                return new Stmt_DefVar(startToken, expr);
+                return new Stmt_DefVar(startToken, varName, expr);
             }
 
             public override void Execute(Context context)
             {
-                context.AddVariable(StartToken, Expr.VarName);
-                Expr.Execute(context);
+                var var = context.AddVariable(StartToken, VarName);
+                if (Expr != null)
+                    var.Value = Expr.Calculate(context);
             }
         }
 
@@ -1135,6 +1150,7 @@ namespace ConsoleApplication1
                 var token = Tokenize(lines);
                 var script = Script.Parse(token);
                 var context = new Context(null);
+                context.AddVariable(null, "y");
                 script.Execute(context);
             }
             catch (Exception ex)
