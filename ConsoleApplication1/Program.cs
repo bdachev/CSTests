@@ -784,49 +784,6 @@ namespace ConsoleApplication1
         }
         #endregion statements
 
-        class Sub
-        {
-            public string SubName { get; set; }
-            public readonly List<string> Params = new List<string>();
-            public Stmt_Block Block { get; set; }
-
-            public static Sub Match(ref Token token)
-            {
-                // should start with sub
-                if (!MatchKeyword(ref token, "sub"))
-                    return null;
-
-                // insist for sub name
-                var subName = MatchIdent(ref token, true);
-                var sub = new Sub() { SubName = subName };
-
-                // insist for (
-                MatchSymbol(ref token, "(", true);
-
-                bool nextParam = false;
-                for (; ; )
-                {
-                    // check for )
-                    if (MatchSymbol(ref token, ")", false))
-                        break;
-
-                    if (nextParam)
-                    {
-                        // check for ,
-                        MatchSymbol(ref token, ",", true);
-                    }
-
-                    // get param name
-                    var param = MatchIdent(ref token, true);
-                    sub.Params.Add(param);
-                }
-
-                // block should follow
-                sub.Block = Stmt_Block.Match(ref token, true);
-                return sub;
-            }
-        }
-
         #region primitives
         private static string MatchIdent(ref Token token, bool insist)
         {
@@ -875,6 +832,49 @@ namespace ConsoleApplication1
             }
         }
         #endregion primitives
+
+        class Sub
+        {
+            public string SubName { get; set; }
+            public readonly List<string> Params = new List<string>();
+            public Stmt_Block Block { get; set; }
+
+            public static Sub Match(ref Token token)
+            {
+                // should start with sub
+                if (!MatchKeyword(ref token, "sub"))
+                    return null;
+
+                // insist for sub name
+                var subName = MatchIdent(ref token, true);
+                var sub = new Sub() { SubName = subName };
+
+                // insist for (
+                MatchSymbol(ref token, "(", true);
+
+                bool nextParam = false;
+                for (; ; )
+                {
+                    // check for )
+                    if (MatchSymbol(ref token, ")", false))
+                        break;
+
+                    if (nextParam)
+                    {
+                        // check for ,
+                        MatchSymbol(ref token, ",", true);
+                    }
+
+                    // get param name
+                    var param = MatchIdent(ref token, true);
+                    sub.Params.Add(param);
+                }
+
+                // block should follow
+                sub.Block = Stmt_Block.Match(ref token, true);
+                return sub;
+            }
+        }
 
         class Script
         {
