@@ -47,7 +47,7 @@ namespace ConsoleApplication1
                                             @"(?'hex'(?i:0x[\da-f]+))|" +
                                             @"(?'double'(?:\d*\.)?\d+[eE][-+]?\d+|\d*\.\d+)|" +
                                             @"(?'int'\d+)|" +
-                                            @"(?'kwd'sub|var|for|if|else|while)|" +
+                                            @"(?'kwd'func|var|for|if|else|while|return)|" +
                                             @"(?'id'[\w_][\w\d_]*)|" +
                                             @"(?'sym'[-+*/%&^|<>!=]=|&&|\|\||<<|>>|[-+~/*%&^|?:=(){};,<>]))", RegexOptions.Compiled);
 
@@ -109,6 +109,15 @@ namespace ConsoleApplication1
                 base(token == null ? message : string.Format("({0},{1}): {2}", token.Line + 1, token.Column + 1, message)) { }
         }
 
+        class ReturnException : ApplicationException
+        {
+            public Value Value { get; private set; }
+            public ReturnException(Value value)
+            {
+                Value = value;
+            }
+        }
+
         const string _errUnexpectedEndOfFile = "unexpected end of file";
         const string _errIdentifierExpected = "identifier expected";
         const string _errStatementExpected = "statement expected";
@@ -120,6 +129,9 @@ namespace ConsoleApplication1
         const string _errfmtVariable_0_NotDefined = "variable {0} not defined";
         const string _errfmtFailedToApply_0_operator = "failed to apply {0} operator";
         const string _errBooleanValueExpected = "boolean value expected";
+        const string _errfmtFunction_0_NotDefined = "function {0} not defined";
+        const string _errParametersMismatch = "parameters mismatch";
+        const string _errFunctionShouldReturnValue = "function should return value";
         #endregion errors
 
         #region expressions
@@ -467,7 +479,7 @@ namespace ConsoleApplication1
                 if (MatchSymbol(ref token_copy, "=", false))
                 {
                     // expression expected
-                    var expr = MatchExpr(ref token_copy);
+                    var expr = MatchExpr(ref token_copy, true);
 
                     // use token copy
                     token = token_copy;
@@ -540,13 +552,17 @@ namespace ConsoleApplication1
 
         static Expr MatchPrimExpr(ref Token token)
         {
+            // check for func call
+            var funcCall = Expr_FuncCall.Match(ref token, false);
+            if (funcCall != null)
+                return funcCall;
+
             var startToken = token;
             // check for identifier
             var varName = MatchIdent(ref token, false);
             if (varName != null)
-            {
                 return new Expr_Ident(startToken, varName);
-            }
+
             // check for string literal
             if (token.Type == TokenType.String)
             {
@@ -582,18 +598,18 @@ namespace ConsoleApplication1
 
             MatchSymbol(ref token, "(", true);
 
-            var expr = MatchExpr(ref token);
+            var expr = MatchExpr(ref token, true);
 
             MatchSymbol(ref token, ")", true);
 
             return expr;
         }
 
-        private static Expr MatchExpr(ref Token token)
+        private static Expr MatchExpr(ref Token token, bool insist)
         {
             var expr = (Expr)Expr_Assign.Match(ref token) ??
                         Expr_Cond.Match(ref token);
-            if (expr == null)
+            if (insist && expr == null)
                 throw new ParserException(token, _errExpressionExpected);
             return expr;
         }
@@ -738,18 +754,26 @@ namespace ConsoleApplication1
 
         class Context
         {
+            public Script Script { get; private set; }
             public Context Parent { get; private set; }
-            public List<Variable> Variables { get; private set; }
+            List<Variable> _variables = new List<Variable>();
 
             public Context(Context parent)
             {
+                Debug.Assert(parent != null);
+                Script = parent.Script;
                 Parent = parent;
-                Variables = new List<Variable>();
+            }
+
+            public Context(Script script)
+            {
+                Script = script;
+                Parent = null;
             }
 
             public Variable GetVariable(string name, bool searchParents)
             {
-                return Variables.FirstOrDefault(v => string.Equals(v.Name, name, StringComparison.OrdinalIgnoreCase)) ??
+                return _variables.FirstOrDefault(v => string.Equals(v.Name, name, StringComparison.OrdinalIgnoreCase)) ??
                         (searchParents && Parent != null ? Parent.GetVariable(name, true) : null);
             }
 
@@ -760,7 +784,7 @@ namespace ConsoleApplication1
                     throw new ExecutionException(token, string.Format(_errfmtVariable_0_AlreadyDefined, name));
 
                 var = new Variable(name);
-                Variables.Add(var);
+                _variables.Add(var);
                 return var;
             }
         }
@@ -778,15 +802,16 @@ namespace ConsoleApplication1
 
         }
 
-        private static Stmt MatchStmt(ref Token token)
+        private static Stmt MatchStmt(ref Token token, bool insist)
         {
             var stmt = Stmt_DefVar.Match(ref token) ??
                        Stmt_Assign.Match(ref token) ??
                        Stmt_For.Match(ref token) ??
                        Stmt_If.Match(ref token) ??
                        Stmt_While.Match(ref token) ??
-                       (Stmt)Stmt_Block.Match(ref token, false);
-            if (stmt == null)
+                       Stmt_Block.Match(ref token, false) ??
+                       (Stmt)Stmt_Return.Match(ref token);
+            if (insist && stmt == null)
                 throw new ParserException(token, _errStatementExpected);
             return stmt;
         }
@@ -890,25 +915,25 @@ namespace ConsoleApplication1
                 MatchSymbol(ref token, "(", true);
 
                 // match 1st expr
-                var expr1 = MatchExpr(ref token);
+                var expr1 = MatchExpr(ref token, true);
 
                 // match ;
                 MatchSymbol(ref token, ";", true);
 
                 // match 2nd expr
-                var expr2 = MatchExpr(ref token);
+                var expr2 = MatchExpr(ref token, true);
 
                 // match ;
                 MatchSymbol(ref token, ";", true);
 
                 // match 3rd expr
-                var expr3 = MatchExpr(ref token);
+                var expr3 = MatchExpr(ref token, true);
 
                 // match )
                 MatchSymbol(ref token, ")", true);
 
                 // match statement
-                var stmt = MatchStmt(ref token);
+                var stmt = MatchStmt(ref token, true);
 
                 return new Stmt_For(startToken, expr1, expr2, expr3, stmt);
             }
@@ -944,20 +969,20 @@ namespace ConsoleApplication1
                 MatchSymbol(ref token, "(", true);
 
                 // match cond expr
-                var expr = MatchExpr(ref token);
+                var expr = MatchExpr(ref token, true);
 
                 // match )
                 MatchSymbol(ref token, ")", true);
 
                 // match statement
-                var stmtThen = MatchStmt(ref token);
+                var stmtThen = MatchStmt(ref token, true);
 
                 Stmt stmtElse = null;
                 if (MatchKeyword(ref token, "else"))
                 {
 
                     // match statement
-                    stmtElse = MatchStmt(ref token);
+                    stmtElse = MatchStmt(ref token, true);
                 }
                 return new Stmt_If(startToken, expr, stmtThen, stmtElse);
             }
@@ -998,13 +1023,13 @@ namespace ConsoleApplication1
                 MatchSymbol(ref token, "(", true);
 
                 // match cond expr
-                var expr = MatchExpr(ref token);
+                var expr = MatchExpr(ref token, true);
 
                 // match )
                 MatchSymbol(ref token, ")", true);
 
                 // match statement
-                var stmt = MatchStmt(ref token);
+                var stmt = MatchStmt(ref token, true);
 
                 return new Stmt_While(startToken, expr, stmt);
             }
@@ -1015,6 +1040,38 @@ namespace ConsoleApplication1
                 {
                     Stmt.Execute(context);
                 }
+            }
+        }
+
+        class Stmt_Return : Stmt
+        {
+            public Expr Expr { get; private set; }
+
+            public Stmt_Return(Token startToken, Expr expr)
+                : base(startToken)
+            {
+                Expr = expr;
+            }
+
+            public static Stmt_Return Match(ref Token token)
+            {
+                var startToken = token;
+                if (!MatchKeyword(ref token, "return"))
+                    return null;
+
+                // match expression optionally
+                var expr = MatchExpr(ref token, false);
+
+                // match ;
+                MatchSymbol(ref token, ";", true);
+
+                return new Stmt_Return(startToken, expr);
+            }
+
+            public override void Execute(Context context)
+            {
+                Value value = Expr == null ? null : value = Expr.Calculate(context);
+                throw new ReturnException(value);
             }
         }
 
@@ -1037,7 +1094,7 @@ namespace ConsoleApplication1
                         break;
 
                     // consume statement
-                    var stmt = MatchStmt(ref token);
+                    var stmt = MatchStmt(ref token, true);
                     block.Stmts.Add(stmt);
                 }
                 return block;
@@ -1053,22 +1110,103 @@ namespace ConsoleApplication1
             }
         }
 
-        class Stmt_SubCall : Stmt
+        class Expr_FuncCall : Expr
         {
-            public string SubName { get; set; }
+            public string FuncName { get; private set; }
             public List<Expr> ParamValues { get; private set; }
 
-            public Stmt_SubCall(Token startToken, string subName)
+            public Expr_FuncCall(Token startToken, string funcName)
                 : base(startToken)
             {
-                SubName = subName;
+                FuncName = funcName;
 
                 ParamValues = new List<Expr>();
             }
 
+            public static Expr_FuncCall Match(ref Token token, bool insist)
+            {
+                var startToken = token;
+                // check for identifier
+                var token_copy = token;
+                var subName = MatchIdent(ref token_copy, false);
+                if (subName == null)
+                    return null;
+
+                // insist on (
+                if (!MatchSymbol(ref token_copy, "(", insist))
+                    return null;
+                token = token_copy;
+
+                var funcCall = new Expr_FuncCall(startToken, subName);
+
+                // consume param expressions
+                bool nextParam = false;
+                for (; ; )
+                {
+                    // check for )
+                    if (MatchSymbol(ref token, ")", false))
+                        break;
+
+                    if (nextParam)
+                    {
+                        // check for ,
+                        MatchSymbol(ref token, ",", true);
+                    }
+                    nextParam = true;
+
+                    // get param value
+                    var valueExpr = MatchExpr(ref token, true);
+                    funcCall.ParamValues.Add(valueExpr);
+                }
+
+                return funcCall;
+            }
+
             public override void Execute(Context context)
             {
-                throw new NotImplementedException();
+                Call(context, false);
+            }
+
+            public override Value Calculate(Context context)
+            {
+                return Call(context, true);
+            }
+
+            private Value Call(Context context, bool insistResult)
+            {
+                var script = context.Script;
+                Debug.Assert(script != null);
+                var func = script.Subs.FirstOrDefault(f => string.Equals(FuncName, f.SubName));
+                if (func == null)
+                    throw new ExecutionException(StartToken, string.Format(_errfmtFunction_0_NotDefined, FuncName));
+
+                if (func.Params.Count != ParamValues.Count)
+                    throw new ExecutionException(StartToken, _errParametersMismatch);
+
+                // calculate parameters
+                var innerContext = new Context(context);
+                for (int i = 0; i < ParamValues.Count; i++)
+                {
+                    var var = innerContext.AddVariable(StartToken, func.Params[i]);
+                    var.Value = ParamValues[i].Calculate(context);
+                }
+
+                try
+                {
+                    func.Block.Execute(innerContext);
+
+                    if (insistResult)
+                        throw new ExecutionException(StartToken, _errFunctionShouldReturnValue);
+
+                    return null;
+                }
+                catch (ReturnException ex)
+                {
+                    var value = ex.Value;
+                    if (insistResult && value == null)
+                        throw new ExecutionException(StartToken, _errFunctionShouldReturnValue);
+                    return value;
+                }
             }
         }
         #endregion statements
@@ -1122,21 +1260,21 @@ namespace ConsoleApplication1
         }
         #endregion primitives
 
-        class Sub
+        class Func
         {
             public string SubName { get; set; }
             public readonly List<string> Params = new List<string>();
             public Stmt_Block Block { get; set; }
 
-            public static Sub Match(ref Token token)
+            public static Func Match(ref Token token)
             {
                 // should start with sub
-                if (!MatchKeyword(ref token, "sub"))
+                if (!MatchKeyword(ref token, "func"))
                     return null;
 
                 // insist for sub name
                 var subName = MatchIdent(ref token, true);
-                var sub = new Sub() { SubName = subName };
+                var func = new Func() { SubName = subName };
 
                 // insist for (
                 MatchSymbol(ref token, "(", true);
@@ -1153,21 +1291,21 @@ namespace ConsoleApplication1
                         // check for ,
                         MatchSymbol(ref token, ",", true);
                     }
-
+                    nextParam = true;
                     // get param name
                     var param = MatchIdent(ref token, true);
-                    sub.Params.Add(param);
+                    func.Params.Add(param);
                 }
 
                 // block should follow
-                sub.Block = Stmt_Block.Match(ref token, true);
-                return sub;
+                func.Block = Stmt_Block.Match(ref token, true);
+                return func;
             }
         }
 
         class Script : Stmt_Block
         {
-            public readonly List<Sub> Subs = new List<Sub>();
+            public readonly List<Func> Subs = new List<Func>();
 
             public Script() : base(null) { }
 
@@ -1176,13 +1314,13 @@ namespace ConsoleApplication1
                 var script = new Script();
                 while (token != null)
                 {
-                    var stmt = MatchStmt(ref token);
+                    var stmt = MatchStmt(ref token, false);
                     if (stmt != null)
                     {
                         script.Stmts.Add(stmt);
                         continue;
                     }
-                    var sub = Sub.Match(ref token);
+                    var sub = Func.Match(ref token);
                     if (sub != null)
                     {
                         script.Subs.Add(sub);
@@ -1201,7 +1339,7 @@ namespace ConsoleApplication1
                 string[] lines = File.ReadAllLines("example1.txt");
                 var token = Tokenize(lines);
                 var script = Script.Parse(token);
-                var context = new Context(null);
+                var context = new Context(script);
                 var varX = context.AddVariable(null, "x");
                 varX.Value = new ValueString("o");
                 var varY = context.AddVariable(null, "y");

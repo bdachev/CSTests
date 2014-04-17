@@ -1,4 +1,8 @@
-﻿var i;
+﻿func add(a,b) {
+  return a + b;
+}
 
-for(i = 0; i < 5; i = i + 1)
-   y = y + x;
+var i;
+for(i = 0; i < 5; i = i + 1) {
+   y = add(y,x);
+}

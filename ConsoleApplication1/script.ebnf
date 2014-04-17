@@ -5,13 +5,14 @@ ident_first = letter | '_' .
 ident = ident_first { ident_first | digit }
 string = '"' { [^"] | \" }  '"'
 
-number = { digit } [ '.' { digit } ] 
+integer = { digit }
+double = [ { digit } ] . { digit } [ (e|E) [+|-] { digit } ]
 hex_num = '0' (x|X) { hex_digit }
 	   
-<ex> ::= <assign>
-	   | <cond_ex>
+<expr> ::= <assign>
+	     | <cond_ex>
 		
-<assign> ::= ident '=' <ex>
+<assign> ::= ident '=' <expr>
 
 <cond_ex> ::= <l_or_ex>
 			| <l_or_ex> '?' <cond_ex> ':' <cond_ex>
@@ -31,12 +32,12 @@ hex_num = '0' (x|X) { hex_digit }
 <and_ex> ::= <eq_ex>
 		   | <and_ex> '&' <eq_ex> .
 
-<eq_op> ::= '::=::=' | '!::=' .
+<eq_op> ::= '==' | '!=' .
 
 <eq_ex> ::= <rel_ex> 
 		  | <eq_ex> <eq_op> <rel_ex> .
 
-<rel_op> ::= '<' | '>' | '<::=' | '>::=' .
+<rel_op> ::= '<' | '>' | '<=' | '>=' .
 	  
 <rel_ex> ::= <shift_ex> <rel_op> <shift_ex> .
 
@@ -59,21 +60,28 @@ hex_num = '0' (x|X) { hex_digit }
 			 | '-' <unary_ex> .
 
 <prim_ex> ::= ident 
-			| number
-			| '(' <ex> ')' .
+			| string
+			| double
+			| integer
+			| hex_num
+  		    | <func_call>
+			| '(' <expr> ')' .
 		 			  
-<stmt> ::= var ident [ '=' <ex> ] ';'
+<stmt> ::= var ident [ '=' <expr> ] ';'
 		 | <assign> ';'
-		 | ident '(' ')' ';'
-		 | ident '(' <expr> {',' <expr> } ')' ';'
+		 | <func_call> ';'
+		 | return [ <expr> ] ';'
 		 | for '(' <expr> ';' <expr> ';' <expr> ')' <stmt>
 		 | if '(' <expr> ')' <stmt> [ else <stmt> ]
 		 | while '(' <expr> ')' <stmt>
-		 | <block> .
+		 | '{' <block> '}' .
 	
-<block> ::= '{' { <stmt> } '}'
+<block> ::= { <stmt> | <func> }
 	 
-<sub> ::= sub ident '(' ')' <block>
-		| sub ident '(' ident { ',' ident} ')' <block> .
+<func> ::= func ident '(' ')' <block>
+		 | func ident '(' ident { ',' ident} ')' <block> .
+
+<func_call> ::= ident '(' ')'
+		      | ident '(' <expr> {',' <expr> } ')'
 	 
-<script> ::= { <stmt> | <sub> } .
+<script> ::= <block> .
