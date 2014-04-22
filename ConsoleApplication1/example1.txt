@@ -1,8 +1,10 @@
-﻿func add(a,b) {
+﻿func add(a, b) {
   return a + b;
 }
 
+var y = [ ];
 var i;
 for(i = 0; i < 5; i = i + 1) {
-   y = add(y,x);
+   var x = [ i ];
+   y = add(y, x);
 }

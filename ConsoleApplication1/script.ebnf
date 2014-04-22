@@ -60,11 +60,13 @@ hex_num = '0' (x|X) { hex_digit }
 			 | '-' <unary_ex> .
 
 <prim_ex> ::= ident 
+			| ident '[' <expr> ']'
 			| string
 			| double
 			| integer
 			| hex_num
   		    | <func_call>
+			| '[' [ <expr> { ',' <expr> } ] ']'
 			| '(' <expr> ')' .
 		 			  
 <stmt> ::= var ident [ '=' <expr> ] ';'

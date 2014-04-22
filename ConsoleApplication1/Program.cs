@@ -22,10 +22,6 @@ namespace ConsoleApplication1
                 var token = ScriptEngine.Tokenize(lines);
                 var script = ScriptEngine.ParseScript(token);
                 var context = new ScriptEngine.Context(script);
-                var varX = context.AddVariable(null, "x");
-                varX.Value = new ScriptEngine.ValueString("o");
-                var varY = context.AddVariable(null, "y");
-                varY.Value = new ScriptEngine.ValueString("O");
                 script.Execute(context);
             }
             catch (Exception ex)

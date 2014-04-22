@@ -46,7 +46,7 @@ namespace ConsoleApplication1
                                             @"(?'int'\d+)|" +
                                             @"(?'kwd'func|var|for|if|else|while|return)|" +
                                             @"(?'id'[\w_][\w\d_]*)|" +
-                                            @"(?'sym'[-+*/%&^|<>!=]=|&&|\|\||<<|>>|[-+~/*%&^|?:=(){};,<>]))", RegexOptions.Compiled);
+                                            @"(?'sym'[-+*/%&^|<>!=]=|&&|\|\||<<|>>|[-+~/*%&^|?:=(){}[\];,<>]))", RegexOptions.Compiled);
 
         public static Token Tokenize(string[] lines)
         {
@@ -80,7 +80,7 @@ namespace ConsoleApplication1
                                 token = new Token(TokenType.Symbol, match.Value, line, match.Index);
                             if (token == null)
                                 throw new ApplicationException("Unknown token");
-                            Console.WriteLine("{0} = {1}", match.Index, match.Value);
+                            Console.WriteLine("({0},{1},{2}) = {3}", token.Line, token.Column, token.Type, match.Value);
                             if (last != null)
                                 last.Next = token;
                             last = token;
@@ -164,7 +164,10 @@ namespace ConsoleApplication1
         abstract class BinOp : BaseOp
         {
             public BinOp(string opName) : base(opName) { }
+
             public abstract Value Apply(Context context, Expr Left, Expr Right);
+
+            public BinOp Clone() { return (BinOp)MemberwiseClone(); }
         }
 
         class BinOpDelegates : BinOp
@@ -173,21 +176,22 @@ namespace ConsoleApplication1
             public Func<ValueInt, ValueInt, Value> OpInt { get; private set; }
             public Func<bool, bool, bool> OpBool { get; private set; }
             public Func<ValueString, ValueString, Value> OpString { get; private set; }
+            public Func<ValueList, ValueList, Value> OpList { get; private set; }
 
             public BinOpDelegates(string opName,
                          Func<ValueDouble, ValueDouble, Value> opDouble,
                          Func<ValueInt, ValueInt, Value> opInt,
                          Func<bool, bool, bool> opBool = null,
-                         Func<ValueString, ValueString, Value> opString = null)
+                         Func<ValueString, ValueString, Value> opString = null,
+                         Func<ValueList, ValueList, Value> opList = null)
                 : base(opName)
             {
                 OpDouble = opDouble;
                 OpInt = opInt;
                 OpBool = opBool;
                 OpString = opString;
+                OpList = opList;
             }
-
-            public BinOp Clone() { return (BinOp)MemberwiseClone(); }
 
             public override Value Apply(Context context, Expr Left, Expr Right)
             {
@@ -253,10 +257,10 @@ namespace ConsoleApplication1
             {
                 var valueInt = innerValue as ValueInt;
                 if (valueInt != null)
-                    return new ValueInt(-valueInt.Value);
+                    return new ValueInt(-valueInt.V);
                 var valueDouble = innerValue as ValueDouble;
                 if (valueDouble != null)
-                    return new ValueDouble(-valueDouble.Value);
+                    return new ValueDouble(-valueDouble.V);
                 return CheckValueNotNull(null);
             }
         }
@@ -268,7 +272,7 @@ namespace ConsoleApplication1
             {
                 var valueInt = innerValue as ValueInt;
                 if (valueInt != null)
-                    return new ValueInt(~valueInt.Value);
+                    return new ValueInt(~valueInt.V);
                 return CheckValueNotNull(null);
             }
         }
@@ -341,7 +345,7 @@ namespace ConsoleApplication1
                             if (right == null)
                                 throw new ParserException(token, _errSubExpressionExpected);
 
-                            var opCopy = op;
+                            var opCopy = op.Clone();
                             opCopy.StartToken = symbolToken;
                             left = new Expr_BinOp(startToken, opCopy, left, right);
                             opFound = true;
@@ -357,29 +361,29 @@ namespace ConsoleApplication1
 
         static UnaryOpHelper _unaryOp = new UnaryOpHelper(new UnOpNeg(), new UnOpLogNeg(), new UnOpCompl());
         static BinOpHelper _binaryMulOpHelper = new BinOpHelper(_unaryOp,
-            new BinOpDelegates("*", (ValueDouble l, ValueDouble r) => new ValueDouble(l.Value * r.Value), (ValueInt l, ValueInt r) => new ValueInt(l.Value * r.Value)),
-            new BinOpDelegates("/", (ValueDouble l, ValueDouble r) => new ValueDouble(l.Value / r.Value), (ValueInt l, ValueInt r) => new ValueInt(l.Value / r.Value)),
-            new BinOpDelegates("%", (ValueDouble l, ValueDouble r) => new ValueDouble(l.Value % r.Value), (ValueInt l, ValueInt r) => new ValueInt(l.Value % r.Value)));
+            new BinOpDelegates("*", (ValueDouble l, ValueDouble r) => new ValueDouble(l.V * r.V), (ValueInt l, ValueInt r) => new ValueInt(l.V * r.V)),
+            new BinOpDelegates("/", (ValueDouble l, ValueDouble r) => new ValueDouble(l.V / r.V), (ValueInt l, ValueInt r) => new ValueInt(l.V / r.V)),
+            new BinOpDelegates("%", (ValueDouble l, ValueDouble r) => new ValueDouble(l.V % r.V), (ValueInt l, ValueInt r) => new ValueInt(l.V % r.V)));
         static BinOpHelper _binaryAddOpHelper = new BinOpHelper(_binaryMulOpHelper,
-            new BinOpDelegates("+", (ValueDouble l, ValueDouble r) => new ValueDouble(l.Value + r.Value), (ValueInt l, ValueInt r) => new ValueInt(l.Value + r.Value), null, (ValueString l, ValueString r) => new ValueString(l.Value + r.Value)),
-            new BinOpDelegates("-", (ValueDouble l, ValueDouble r) => new ValueDouble(l.Value - r.Value), (ValueInt l, ValueInt r) => new ValueInt(l.Value - r.Value)));
+            new BinOpDelegates("+", (ValueDouble l, ValueDouble r) => new ValueDouble(l.V + r.V), (ValueInt l, ValueInt r) => new ValueInt(l.V + r.V), null, (ValueString l, ValueString r) => new ValueString(l.V + r.V), (ValueList l, ValueList r) => new ValueList(l.V.Concat(r.V))),
+            new BinOpDelegates("-", (ValueDouble l, ValueDouble r) => new ValueDouble(l.V - r.V), (ValueInt l, ValueInt r) => new ValueInt(l.V - r.V)));
         static BinOpHelper _binaryShiftOpHelper = new BinOpHelper(_binaryAddOpHelper,
-            new BinOpDelegates("<<", null, (ValueInt l, ValueInt r) => new ValueInt(l.Value << r.Value)),
-            new BinOpDelegates(">>", null, (ValueInt l, ValueInt r) => new ValueInt(l.Value >> r.Value)));
+            new BinOpDelegates("<<", null, (ValueInt l, ValueInt r) => new ValueInt(l.V << r.V)),
+            new BinOpDelegates(">>", null, (ValueInt l, ValueInt r) => new ValueInt(l.V >> r.V)));
         static BinOpHelper _binaryRelOpHelper = new BinOpHelper(_binaryShiftOpHelper,
-            new BinOpDelegates("<", (ValueDouble l, ValueDouble r) => new ValueBool(l.Value < r.Value), (ValueInt l, ValueInt r) => new ValueBool(l.Value < r.Value)),
-            new BinOpDelegates(">", (ValueDouble l, ValueDouble r) => new ValueBool(l.Value > r.Value), (ValueInt l, ValueInt r) => new ValueBool(l.Value > r.Value)),
-            new BinOpDelegates("<=", (ValueDouble l, ValueDouble r) => new ValueBool(l.Value <= r.Value), (ValueInt l, ValueInt r) => new ValueBool(l.Value <= r.Value)),
-            new BinOpDelegates(">=", (ValueDouble l, ValueDouble r) => new ValueBool(l.Value >= r.Value), (ValueInt l, ValueInt r) => new ValueBool(l.Value >= r.Value)));
+            new BinOpDelegates("<", (ValueDouble l, ValueDouble r) => new ValueBool(l.V < r.V), (ValueInt l, ValueInt r) => new ValueBool(l.V < r.V)),
+            new BinOpDelegates(">", (ValueDouble l, ValueDouble r) => new ValueBool(l.V > r.V), (ValueInt l, ValueInt r) => new ValueBool(l.V > r.V)),
+            new BinOpDelegates("<=", (ValueDouble l, ValueDouble r) => new ValueBool(l.V <= r.V), (ValueInt l, ValueInt r) => new ValueBool(l.V <= r.V)),
+            new BinOpDelegates(">=", (ValueDouble l, ValueDouble r) => new ValueBool(l.V >= r.V), (ValueInt l, ValueInt r) => new ValueBool(l.V >= r.V)));
         static BinOpHelper _binaryEqOpHelper = new BinOpHelper(_binaryRelOpHelper,
-            new BinOpDelegates("==", (ValueDouble l, ValueDouble r) => new ValueBool(l.Value == r.Value), (ValueInt l, ValueInt r) => new ValueBool(l.Value == r.Value), (bool l, bool r) => l == r, (ValueString l, ValueString r) => new ValueBool(l.Value == r.Value)),
-            new BinOpDelegates("!=", (ValueDouble l, ValueDouble r) => new ValueBool(l.Value != r.Value), (ValueInt l, ValueInt r) => new ValueBool(l.Value != r.Value), (bool l, bool r) => l != r, (ValueString l, ValueString r) => new ValueBool(l.Value != r.Value)));
+            new BinOpDelegates("==", (ValueDouble l, ValueDouble r) => new ValueBool(l.V == r.V), (ValueInt l, ValueInt r) => new ValueBool(l.V == r.V), (bool l, bool r) => l == r, (ValueString l, ValueString r) => new ValueBool(l.V == r.V), (ValueList l, ValueList r) => new ValueBool(l.Equals(r))),
+            new BinOpDelegates("!=", (ValueDouble l, ValueDouble r) => new ValueBool(l.V != r.V), (ValueInt l, ValueInt r) => new ValueBool(l.V != r.V), (bool l, bool r) => l != r, (ValueString l, ValueString r) => new ValueBool(l.V != r.V), (ValueList l, ValueList r) => new ValueBool(!l.Equals(r))));
         static BinOpHelper _binaryAndOpHelper = new BinOpHelper(_binaryEqOpHelper,
-            new BinOpDelegates("&", null, (ValueInt l, ValueInt r) => new ValueInt(l.Value & r.Value), (bool l, bool r) => l & r));
+            new BinOpDelegates("&", null, (ValueInt l, ValueInt r) => new ValueInt(l.V & r.V), (bool l, bool r) => l & r));
         static BinOpHelper _binaryXorOpHelper = new BinOpHelper(_binaryAndOpHelper,
-            new BinOpDelegates("^", null, (ValueInt l, ValueInt r) => new ValueInt(l.Value ^ r.Value), (bool l, bool r) => l ^ r));
+            new BinOpDelegates("^", null, (ValueInt l, ValueInt r) => new ValueInt(l.V ^ r.V), (bool l, bool r) => l ^ r));
         static BinOpHelper _binaryOrOpHelper = new BinOpHelper(_binaryXorOpHelper,
-            new BinOpDelegates("|", null, (ValueInt l, ValueInt r) => new ValueInt(l.Value | r.Value), (bool l, bool r) => l | r));
+            new BinOpDelegates("|", null, (ValueInt l, ValueInt r) => new ValueInt(l.V | r.V), (bool l, bool r) => l | r));
         static BinOpHelper _binaryLogAndOpHelper = new BinOpHelper(_binaryOrOpHelper, new BinOpLogAnd());
         static BinOpHelper _binaryLogOrOpHelper = new BinOpHelper(_binaryOrOpHelper, new BinOpLogOr());
 
@@ -547,6 +551,61 @@ namespace ConsoleApplication1
         }
         #endregion condition
 
+        #region list
+        class Expr_List : Expr
+        {
+            public IEnumerable<Expr> ExprValues { get; private set; }
+
+            public Expr_List(Token startToken, IEnumerable<Expr> exprValues)
+                : base(startToken)
+            {
+                ExprValues = exprValues;
+            }
+
+            public static Expr_List Match(ref Token token)
+            {
+                var startToken = token;
+                // check for [
+                if (!MatchSymbol(ref token, "[", false))
+                    return null;
+
+                var exprValues = new List<Expr>();
+
+                // consume expressions for list elements
+                bool nextParam = false;
+                for (; ; )
+                {
+
+                    // check for )
+                    if (MatchSymbol(ref token, "]", false))
+                        break;
+                    if (nextParam)
+                    {
+                        // check for ,
+                        MatchSymbol(ref token, ",", true);
+                    }
+                    nextParam = true;
+
+                    // get element value
+                    var expr = MatchExpr(ref token, true);
+                    exprValues.Add(expr);
+                }
+
+                return new Expr_List(startToken, exprValues);
+            }
+
+            public override Value Calculate(Context context)
+            {
+                var values = new List<Value>();
+
+                foreach(var exprValue in ExprValues)
+                    values.Add(exprValue.Calculate(context));
+
+                return new ValueList(values);
+            }
+        }
+        #endregion list
+
         static Expr MatchPrimExpr(ref Token token)
         {
             // check for func call
@@ -593,8 +652,15 @@ namespace ConsoleApplication1
                 return new Expr_Const(startToken, new ValueInt(iValue));
             }
 
+            // check for list of values
+            var list = Expr_List.Match(ref token);
+            if (list != null)
+                return list;
+
+            // check for (
             MatchSymbol(ref token, "(", true);
 
+            // check for expression in quotes
             var expr = MatchExpr(ref token, true);
 
             MatchSymbol(ref token, ")", true);
@@ -613,16 +679,12 @@ namespace ConsoleApplication1
         #endregion expressions
 
         #region value
-        public abstract class Value
-        {
-            public abstract bool AsBool { get; }
-        }
-
         class ValueHelper
         {
             public static Value ApplyBinOp(Token startToken, BinOpDelegates binOp, Value value1, Value value2)
             {
-                var value = TryApplyBinOpForInt(startToken, binOp, value1, value2) ??
+                var value = TryApplyBinOpForList(startToken, binOp, value1, value2) ??
+                            TryApplyBinOpForInt(startToken, binOp, value1, value2) ??
                             TryApplyBinOpForDouble(startToken, binOp, value1, value2) ??
                             TryApplyBinOpForString(startToken, binOp, value1, value2) ??
                             TryApplyBinOpForBool(startToken, binOp, value1, value2);
@@ -654,6 +716,19 @@ namespace ConsoleApplication1
                 return binOp.OpInt(i1, i2);
             }
 
+            public static Value TryApplyBinOpForList(Token startToken, BinOpDelegates binOp, Value value1, Value value2)
+            {
+                if (binOp.OpList == null)
+                    return null;
+
+                var l1 = value1 as ValueList;
+                var l2 = value2 as ValueList;
+                if (l1 == null || l2 == null)
+                    return null;
+
+                return binOp.OpList(l1, l2);
+            }
+
             public static Value TryApplyBinOpForDouble(Token startToken, BinOpDelegates binOp, Value value1, Value value2)
             {
                 if (binOp.OpDouble == null)
@@ -665,14 +740,14 @@ namespace ConsoleApplication1
                 {
                     var i1 = value1 as ValueInt;
                     if (i1 != null)
-                        d1 = new ValueDouble(i1.Value);
+                        d1 = new ValueDouble(i1.V);
                     return null;
                 }
                 if (d2 == null)
                 {
                     var i2 = value2 as ValueInt;
                     if (i2 != null)
-                        d2 = new ValueDouble(i2.Value);
+                        d2 = new ValueDouble(i2.V);
                     return null;
                 }
                 if (d1 == null || d2 == null)
@@ -695,55 +770,110 @@ namespace ConsoleApplication1
             }
         }
 
-        public class ValueBool : Value
+        public abstract class Value : IEquatable<Value>
+        {
+            public abstract bool AsBool { get; }
+
+            public abstract bool Equals(Value other);
+        }
+
+        public abstract class Value<T> : Value
+        {
+            public T V { get; private set; }
+            public Value(T value) { V = value; }
+
+            public override int GetHashCode()
+            {
+                return V.GetHashCode();
+            }
+
+            public override bool Equals(object obj)
+            {
+                if (ReferenceEquals(this, obj))
+                    return true;
+
+                var other = obj as Value;
+                if (other == null)
+                    return false;
+
+                return Equals(other);
+            }
+
+            public override bool Equals(Value other)
+            {
+                var otherT = other as Value<T>;
+                return otherT != null && V.Equals(otherT.V);
+            }
+
+            public override string ToString()
+            {
+                return V.ToString();
+            }
+        }
+
+        public class ValueBool : Value<bool>
         {
             public readonly static ValueBool True = new ValueBool(true);
             public readonly static ValueBool False = new ValueBool(false);
 
             public static ValueBool Box(bool value) { return value ? True : False; }
 
-            public bool Value { get; private set; }
-            public ValueBool(bool value)
-            {
-                Value = value;
-            }
+            public ValueBool(bool value) : base(value) { }
 
-            public override bool AsBool { get { return Value; } }
+            public override bool AsBool { get { return V; } }
         }
 
-        public class ValueInt : Value
+        public class ValueInt : Value<int>
         {
-            public int Value { get; private set; }
-            public ValueInt(int value)
-            {
-                Value = value;
-            }
-            public override bool AsBool { get { return Value != 0; } }
+            public ValueInt(int value) : base(value) { }
+            public override bool AsBool { get { return V != 0; } }
         }
 
-        public class ValueDouble : Value
+        public class ValueDouble : Value<double>
         {
-            public double Value { get; private set; }
-            public ValueDouble(double value)
-            {
-                Value = value;
-            }
+            public ValueDouble(double value) : base(value) { }
 
-            public override bool AsBool { get { return Value != 0; } }
+            public override bool AsBool { get { return V != 0; } }
         }
 
-        public class ValueString : Value
+        public class ValueString : Value<string>
         {
-            public string Value { get; private set; }
-            public ValueString(string value)
+            public ValueString(string value) : base(value) { }
+
+            public override bool AsBool { get { return !string.IsNullOrEmpty(V); } }
+        }
+
+        public class ValueList : Value<IEnumerable<Value>>
+        {
+            public ValueList(IEnumerable<Value> value) : base(value) { }
+
+            public override bool AsBool { get { return V.Any(); } }
+
+            public override bool Equals(Value other)
             {
-                Value = value;
+                var otherT = other as ValueList;
+                return otherT != null && V.SequenceEqual(otherT.V);
             }
 
-            public override bool AsBool { get { return !string.IsNullOrEmpty(Value); } }
+            public override string ToString()
+            {
+                var sb = new StringBuilder();
+                sb.Append('[');
+                bool notFirst = false;
+                foreach(var v in V)
+                {
+                    if (notFirst)
+                        sb.Append(',');
+                    notFirst = true;
+                    sb.Append(v);
+                }
+                sb.Append(']');
+                return string.Format(sb.ToString());
+            }
         }
         #endregion // value
 
+        [DebuggerDisplay("{Name} = {Value}")]
         public class Variable
         {
             public string Name { get; private set; }
@@ -847,7 +977,7 @@ namespace ConsoleApplication1
                 {
 
                     // consume assignment expression
-                    expr = Expr_Assign.Match(ref token);
+                    expr = MatchExpr(ref token, true);
                 }
 
                 // match ;
