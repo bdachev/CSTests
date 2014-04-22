@@ -12,7 +12,7 @@ hex_num = '0' (x|X) { hex_digit }
 <expr> ::= <assign>
 	     | <cond_ex>
 		
-<assign> ::= ident '=' <expr>
+<assign> ::= <lvalue> '=' <expr>
 
 <cond_ex> ::= <l_or_ex>
 			| <l_or_ex> '?' <cond_ex> ':' <cond_ex>
@@ -59,8 +59,7 @@ hex_num = '0' (x|X) { hex_digit }
 <unary_ex> ::= <prim_ex>
 			 | '-' <unary_ex> .
 
-<prim_ex> ::= ident 
-			| ident '[' <expr> ']'
+<prim_ex> ::= <lvalue>
 			| string
 			| double
 			| integer
@@ -68,6 +67,8 @@ hex_num = '0' (x|X) { hex_digit }
   		    | <func_call>
 			| '[' [ <expr> { ',' <expr> } ] ']'
 			| '(' <expr> ')' .
+
+lvalue ::= ident [ '[' <expr> ']' ]
 		 			  
 <stmt> ::= var ident [ '=' <expr> ] ';'
 		 | <assign> ';'

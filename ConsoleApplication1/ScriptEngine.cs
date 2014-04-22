@@ -123,8 +123,12 @@ namespace ConsoleApplication1
         const string _errSubExpressionExpected = "sub-expression expected";
         const string _errfmt_0_Expected = "{0} expected";
         const string _errfmtVariable_0_AlreadyDefined = "variable {0} already defined";
+        const string _errfmtFunction_0_AlreadyDefined = "function {0} already defined";
         const string _errfmtVariable_0_NotDefined = "variable {0} not defined";
+        const string _errfmtVariable_0_NotCollection = "variable {0} not a collection";
         const string _errfmtFailedToApply_0_operator = "failed to apply {0} operator";
+        const string _errIndexExpressionIsNotInteger = "index expression is not an integer";
+        const string _errfmtIndexOutOfRange = "index {0} out of range";
         const string _errBooleanValueExpected = "boolean value expected";
         const string _errfmtFunction_0_NotDefined = "function {0} not defined";
         const string _errParametersMismatch = "parameters mismatch";
@@ -365,7 +369,7 @@ namespace ConsoleApplication1
             new BinOpDelegates("/", (ValueDouble l, ValueDouble r) => new ValueDouble(l.V / r.V), (ValueInt l, ValueInt r) => new ValueInt(l.V / r.V)),
             new BinOpDelegates("%", (ValueDouble l, ValueDouble r) => new ValueDouble(l.V % r.V), (ValueInt l, ValueInt r) => new ValueInt(l.V % r.V)));
         static BinOpHelper _binaryAddOpHelper = new BinOpHelper(_binaryMulOpHelper,
-            new BinOpDelegates("+", (ValueDouble l, ValueDouble r) => new ValueDouble(l.V + r.V), (ValueInt l, ValueInt r) => new ValueInt(l.V + r.V), null, (ValueString l, ValueString r) => new ValueString(l.V + r.V), (ValueList l, ValueList r) => new ValueList(l.V.Concat(r.V))),
+            new BinOpDelegates("+", (ValueDouble l, ValueDouble r) => new ValueDouble(l.V + r.V), (ValueInt l, ValueInt r) => new ValueInt(l.V + r.V), null, (ValueString l, ValueString r) => new ValueString(l.V + r.V), (ValueList l, ValueList r) => new ValueList(new List<Value>(l.V.Concat(r.V)))),
             new BinOpDelegates("-", (ValueDouble l, ValueDouble r) => new ValueDouble(l.V - r.V), (ValueInt l, ValueInt r) => new ValueInt(l.V - r.V)));
         static BinOpHelper _binaryShiftOpHelper = new BinOpHelper(_binaryAddOpHelper,
             new BinOpDelegates("<<", null, (ValueInt l, ValueInt r) => new ValueInt(l.V << r.V)),
@@ -425,22 +429,110 @@ namespace ConsoleApplication1
         }
         #endregion unary and binary operators
 
-        class Expr_Ident : Expr
+        abstract class LExpr : Expr
+        {
+            public LExpr(Token startToken) : base(startToken) { }
+
+            public abstract Value Assign(Context context, Value newValue);
+
+            public static LExpr Match(ref Token token)
+            {
+                var startToken = token;
+                var varName = MatchIdent(ref token, false);
+                if (varName == null)
+                    return null;
+
+                if (MatchSymbol(ref token, "[", false))
+                {
+                    // consume index expression
+                    Expr exprIndex = MatchExpr(ref token, true);
+
+                    // check for closing ]
+                    MatchSymbol(ref token, "]", true);
+
+                    return new LExpr_Index(startToken, varName, exprIndex);
+                }
+                else
+                {
+                    return new LExpr_Ident(startToken, varName);
+                }
+            }
+        }
+
+        class LExpr_Ident : LExpr
         {
             public string Name { get; private set; }
-            public Expr_Ident(Token startToken, string name)
+            public LExpr_Ident(Token startToken, string name)
                 : base(startToken)
             {
                 Name = name;
             }
 
-            public override Value Calculate(Context context)
+            Variable GetVariable(Context context)
             {
                 var var = context.GetVariable(Name, true);
                 if (var == null)
                     throw new ExecutionException(StartToken, string.Format(_errfmtVariable_0_NotDefined, Name));
 
+                return var;
+            }
+
+            public override Value Calculate(Context context)
+            {
+                var var = GetVariable(context);
                 return var.Value;
+            }
+
+            public override Value Assign(Context context, Value newValue)
+            {
+                var var = GetVariable(context);
+                return var.Value = newValue;
+            }
+        }
+
+        class LExpr_Index : LExpr
+        {
+            public string Name { get; private set; }
+            public Expr ExprIndex { get; private set; }
+            public LExpr_Index(Token startToken, string name, Expr exprIndex)
+                : base(startToken)
+            {
+                Name = name;
+                ExprIndex = exprIndex;
+            }
+
+            Tuple<List<Value>, int> GetContext(Context context)
+            {
+                // get list var
+                var var = context.GetVariable(Name, true);
+                if (var == null)
+                    throw new ExecutionException(StartToken, string.Format(_errfmtVariable_0_NotDefined, Name));
+                var valueList = var.Value as ValueList;
+                if (valueList == null)
+                    throw new ExecutionException(StartToken, string.Format(_errfmtVariable_0_NotCollection, Name));
+                var list = valueList.V;
+
+                // calculate index
+                var valueIndex = ExprIndex.Calculate(context) as ValueInt;
+                if (valueIndex == null)
+                    throw new ExecutionException(StartToken, _errIndexExpressionIsNotInteger);
+                int index = valueIndex.V;
+                if (index < 0 || index >= list.Count)
+                    throw new ExecutionException(StartToken, string.Format(_errfmtIndexOutOfRange, index));
+
+                return Tuple.Create(list, index);
+            }
+
+            public override Value Calculate(Context context)
+            {
+                var ctxt = GetContext(context);
+                return ctxt.Item1[ctxt.Item2];
+            }
+
+            public override Value Assign(Context context, Value newValue)
+            {
+                var ctxt = GetContext(context);
+                return ctxt.Item1[ctxt.Item2] = newValue;
             }
         }
 
@@ -459,44 +551,44 @@ namespace ConsoleApplication1
         #region assignment
         class Expr_Assign : Expr
         {
-            public string VarName { get; private set; }
-            public Expr Expr { get; private set; }
+            public LExpr Left { get; private set; }
+            public Expr Right { get; private set; }
 
-            public Expr_Assign(Token startToken, string varName, Expr expr)
+            public Expr_Assign(Token startToken, LExpr left, Expr right)
                 : base(startToken)
             {
-                VarName = varName;
-                Expr = expr;
+                Left = left;
+                Right = right;
             }
 
             public static Expr_Assign Match(ref Token token)
             {
                 var startToken = token;
                 var token_copy = token;
-                var varName = MatchIdent(ref token_copy, false);
-                if (varName == null)
+                var left = LExpr.Match(ref token);
+                if (left == null)
                     return null;
 
-                if (MatchSymbol(ref token_copy, "=", false))
+                // check for equality
+                if (!MatchSymbol(ref token, "=", false))
                 {
-                    // expression expected
-                    var expr = MatchExpr(ref token_copy, true);
-
-                    // use token copy
                     token = token_copy;
-                    return new Expr_Assign(startToken, varName, expr);
+                    return null;
                 }
 
-                return null;
+                // expression expected
+                var right = MatchExpr(ref token, true);
+
+                return new Expr_Assign(startToken, left, right);
             }
 
             public override Value Calculate(Context context)
             {
-                var var = context.GetVariable(VarName, true);
-                if (var == null)
-                    throw new ExecutionException(StartToken, string.Format(_errfmtVariable_0_NotDefined, VarName));
+                // calculate right side of the assignment
+                var value = Right.Calculate(context);
 
-                return var.Value = Expr.Calculate(context);
+                // execute assignment
+                return Left.Assign(context, value);
             }
         }
         #endregion assignment
@@ -598,7 +690,7 @@ namespace ConsoleApplication1
             {
                 var values = new List<Value>();
 
-                foreach(var exprValue in ExprValues)
+                foreach (var exprValue in ExprValues)
                     values.Add(exprValue.Calculate(context));
 
                 return new ValueList(values);
@@ -608,16 +700,16 @@ namespace ConsoleApplication1
 
         static Expr MatchPrimExpr(ref Token token)
         {
+            var startToken = token;
             // check for func call
             var funcCall = Expr_FuncCall.Match(ref token, false);
             if (funcCall != null)
                 return funcCall;
 
-            var startToken = token;
-            // check for identifier
-            var varName = MatchIdent(ref token, false);
-            if (varName != null)
-                return new Expr_Ident(startToken, varName);
+            // check for lvalue
+            var lExpr = LExpr.Match(ref token);
+            if (lExpr != null)
+                return lExpr;
 
             // check for string literal
             if (token.Type == TokenType.String)
@@ -843,9 +935,9 @@ namespace ConsoleApplication1
             public override bool AsBool { get { return !string.IsNullOrEmpty(V); } }
         }
 
-        public class ValueList : Value<IEnumerable<Value>>
+        public class ValueList : Value<List<Value>>
         {
-            public ValueList(IEnumerable<Value> value) : base(value) { }
+            public ValueList(List<Value> value) : base(value) { }
 
             public override bool AsBool { get { return V.Any(); } }
 
@@ -860,7 +952,7 @@ namespace ConsoleApplication1
                 var sb = new StringBuilder();
                 sb.Append('[');
                 bool notFirst = false;
-                foreach(var v in V)
+                foreach (var v in V)
                 {
                     if (notFirst)
                         sb.Append(',');
@@ -888,20 +980,18 @@ namespace ConsoleApplication1
 
         public class Context
         {
-            public Script Script { get; private set; }
             public Context Parent { get; private set; }
             List<Variable> _variables = new List<Variable>();
+            List<Func> _funcs = new List<Func>();
 
             public Context(Context parent)
             {
                 Debug.Assert(parent != null);
-                Script = parent.Script;
                 Parent = parent;
             }
 
             public Context(Script script)
             {
-                Script = script;
                 Parent = null;
             }
 
@@ -920,6 +1010,21 @@ namespace ConsoleApplication1
                 var = new Variable(name);
                 _variables.Add(var);
                 return var;
+            }
+
+            public Func GetFunc(string name, bool searchParents)
+            {
+                return _funcs.FirstOrDefault(f => string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase)) ??
+                        (searchParents && Parent != null ? Parent.GetFunc(name, true) : null);
+            }
+
+            public void AddFunc(Func func)
+            {
+                var var = GetFunc(func.Name, false);
+                if (var != null)
+                    throw new ExecutionException(func.StartToken, string.Format(_errfmtFunction_0_AlreadyDefined, func.Name));
+
+                _funcs.Add(func);
             }
         }
 
@@ -1308,9 +1413,7 @@ namespace ConsoleApplication1
 
             private Value Call(Context context, bool insistResult)
             {
-                var script = context.Script;
-                Debug.Assert(script != null);
-                var func = script.Subs.FirstOrDefault(f => string.Equals(FuncName, f.SubName));
+                var func = context.GetFunc(FuncName, true);
                 if (func == null)
                     throw new ExecutionException(StartToken, string.Format(_errfmtFunction_0_NotDefined, FuncName));
 
@@ -1396,23 +1499,33 @@ namespace ConsoleApplication1
 
         public class Func
         {
-            public string SubName { get; set; }
-            public readonly List<string> Params = new List<string>();
-            public Stmt_Block Block { get; set; }
+            public Token StartToken { get; private set; }
+            public string Name { get; private set; }
+            public List<string> Params { get; private set; }
+            public Stmt Block { get; private set; }
+
+            public Func(Token startToken, string name, Stmt block)
+            {
+                StartToken = startToken;
+                Name = name;
+                Block = block;
+                Params = new List<string>();
+            }
 
             public static Func Match(ref Token token)
             {
+                var startToken = token;
                 // should start with sub
                 if (!MatchKeyword(ref token, "func"))
                     return null;
 
                 // insist for sub name
-                var subName = MatchIdent(ref token, true);
-                var func = new Func() { SubName = subName };
+                var name = MatchIdent(ref token, true);
 
                 // insist for (
                 MatchSymbol(ref token, "(", true);
 
+                var @params = new List<string>();
                 bool nextParam = false;
                 for (; ; )
                 {
@@ -1428,20 +1541,34 @@ namespace ConsoleApplication1
                     nextParam = true;
                     // get param name
                     var param = MatchIdent(ref token, true);
-                    func.Params.Add(param);
+                    @params.Add(param);
                 }
 
                 // block should follow
-                func.Block = Stmt_Block.Match(ref token, true);
+                var block = Stmt_Block.Match(ref token, true);
+                var func = new Func(startToken, name, block);
+                func.Params.AddRange(@params);
                 return func;
             }
         }
 
         public class Script : Stmt_Block
         {
-            public readonly List<Func> Subs = new List<Func>();
+            public List<Func> Funcs { get; private set; }
 
-            public Script() : base(null) { }
+            public Script()
+                : base(null)
+            {
+                Funcs = new List<Func>();
+            }
+
+            public override void Execute(Context context)
+            {
+                var innerContext = new Context(context);
+                foreach (var func in Funcs)
+                    innerContext.AddFunc(func);
+                base.Execute(innerContext);
+            }
         }
 
         public static Script ParseScript(Token token)
@@ -1458,13 +1585,12 @@ namespace ConsoleApplication1
                 var sub = Func.Match(ref token);
                 if (sub != null)
                 {
-                    script.Subs.Add(sub);
+                    script.Funcs.Add(sub);
                     continue;
                 }
             }
 
             return script;
         }
-
     }
 }
