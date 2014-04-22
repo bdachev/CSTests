@@ -1,5 +1,5 @@
 ﻿var notFirst = false;
-foreach(var i in [5,4,3,2,1]) {
+foreach(var i in [0xfffff,"kukudfdf",0xfff,0xff,0xf]) {
   if(notFirst)
 	print(",");
   notFirst = true;

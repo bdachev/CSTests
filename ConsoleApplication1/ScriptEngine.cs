@@ -41,14 +41,14 @@ namespace ConsoleApplication1
             }
         }
 
-        static Regex regTokens = new Regex(@"(?:""(?'str'[^""]|"""")*""|" +
+        static Regex regTokens = new Regex(@"""(?'str'(?:[^""]|"""")*)""|" +
                                             @"(?i:0x(?'hex'[\da-f]+))|" +
                                             @"(?'double'(?:\d*\.)?\d+[eE][-+]?\d+|\d*\.\d+)|" +
                                             @"(?'int'\d+)|" +
                                             @"(?'bool'true|false)|" +
                                             @"(?'kwd'func|var|foreach|for|in|if|else|while|return)|" +
                                             @"(?'id'[\w_][\w\d_]*)|" +
-                                            @"(?'sym'[-+*/%&^|<>!=]=|&&|\|\||<<|>>|[-+~/*%&^|?:=(){}[\];,<>]))", RegexOptions.Compiled);
+                                            @"(?'sym'[-+*/%&^|<>!=]=|&&|\|\||<<|>>|[-+~/*%&^|?:=(){}[\];,<>])", RegexOptions.Compiled);
 
         public static Token Tokenize(string[] lines)
         {
