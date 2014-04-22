@@ -46,7 +46,7 @@ namespace ConsoleApplication1
                                             @"(?'double'(?:\d*\.)?\d+[eE][-+]?\d+|\d*\.\d+)|" +
                                             @"(?'int'\d+)|" +
                                             @"(?'bool'true|false)|" +
-                                            @"(?'kwd'func|var|for|if|else|while|return)|" +
+                                            @"(?'kwd'func|var|foreach|for|in|if|else|while|return)|" +
                                             @"(?'id'[\w_][\w\d_]*)|" +
                                             @"(?'sym'[-+*/%&^|<>!=]=|&&|\|\||<<|>>|[-+~/*%&^|?:=(){}[\];,<>]))", RegexOptions.Compiled);
 
@@ -129,7 +129,8 @@ namespace ConsoleApplication1
         const string _errfmtVariable_0_AlreadyDefined = "variable {0} already defined";
         const string _errfmtFunction_0_AlreadyDefined = "function {0} already defined";
         const string _errfmtVariable_0_NotDefined = "variable {0} not defined";
-        const string _errfmtVariable_0_NotCollection = "variable {0} not a collection";
+        const string _errfmtVariable_0_NotCollection = "variable {0} not collection";
+        const string _errExpressionNotCollection = "expression is not collection";
         const string _errfmtFailedToApply_0_operator = "failed to apply {0} operator";
         const string _errIndexExpressionIsNotInteger = "index expression is not an integer";
         const string _errfmtIndexOutOfRange = "index {0} out of range";
@@ -1057,6 +1058,7 @@ namespace ConsoleApplication1
                        Stmt_Assign.Match(ref token) ??
                        Stmt_FuncCall.Match(ref token) ??
                        Stmt_For.Match(ref token) ??
+                       Stmt_ForEach.Match(ref token) ??
                        Stmt_If.Match(ref token) ??
                        Stmt_While.Match(ref token) ??
                        Stmt_Block.Match(ref token, false) ??
@@ -1221,6 +1223,65 @@ namespace ConsoleApplication1
             {
                 for (Expr1.Calculate(context); Expr2.Calculate(context).AsBool; Expr3.Calculate(context))
                     Stmt.Execute(context);
+            }
+        }
+
+        class Stmt_ForEach : Stmt
+        {
+            public string VarName { get; private set; }
+            public Expr ExprColl { get; private set; }
+            public Stmt Stmt { get; private set; }
+
+            public Stmt_ForEach(Token startToken, string varName, Expr exprColl, Stmt stmt)
+                : base(startToken)
+            {
+                VarName = varName;
+                ExprColl = exprColl;
+                Stmt = stmt;
+            }
+
+            public static Stmt_ForEach Match(ref Token token)
+            {
+                var startToken = token;
+                if (!MatchKeyword(ref token, "foreach"))
+                    return null;
+
+                // match (
+                MatchSymbol(ref token, "(", true);
+
+                // match keyword 'var'
+                MatchKeyword(ref token, "var");
+
+                // match ident name
+                var varName = MatchIdent(ref token, true);
+
+                // match keyword 'in'
+                MatchKeyword(ref token, "in");
+
+                // match expr for collection
+                var exprColl = MatchExpr(ref token, true);
+
+                // match )
+                MatchSymbol(ref token, ")", true);
+
+                // match statement
+                var stmt = MatchStmt(ref token, true);
+
+                return new Stmt_ForEach(startToken, varName, exprColl, stmt);
+            }
+
+            public override void Execute(Context context)
+            {
+                var valueList = ExprColl.Calculate(context) as ValueList;
+                if (valueList == null)
+                    throw new ExecutionException(ExprColl.StartToken, _errExpressionNotCollection);
+                var innerContext = new Context(context);
+                var var = innerContext.AddVariable(StartToken, VarName);
+                foreach (var value in valueList.V)
+                {
+                    var.Value = value;
+                    Stmt.Execute(innerContext);
+                }
             }
         }
 

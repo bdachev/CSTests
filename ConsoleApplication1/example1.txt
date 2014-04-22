@@ -1,22 +1,7 @@
-﻿func add(a, b) {
-  return a + b;
-}
-
-var y = [ ];
-var i;
-for(i = 0; i < 5; i = i + 1) {
-   var x = [ i ];
-   y = add(y, x);
-}
-
-for(i=0; i<5; i = i+1) {
-  y[i] = y[i]*2;
-}
-
-var notFirst = false;
-for(i=0; i<5; i=i+1) {
+﻿var notFirst = false;
+foreach(var i in [5,4,3,2,1]) {
   if(notFirst)
 	print(",");
   notFirst = true;
-  print(y[i]);
+  print(i);
 }
