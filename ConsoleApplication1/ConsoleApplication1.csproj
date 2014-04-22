@@ -49,6 +49,7 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <DependentUpon>Settings.settings</DependentUpon>
     </Compile>
+    <Compile Include="ScriptEngine.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
