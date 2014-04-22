@@ -18,6 +18,7 @@ namespace ConsoleApplication1
             Double,
             Integer,
             HexNumber,
+            Boolean,
             Identifier,
             Keyword,
             Symbol
@@ -40,10 +41,11 @@ namespace ConsoleApplication1
             }
         }
 
-        static Regex regTokens = new Regex(@"(?:(?'str'""(?:[^""]|"""")*"")|" +
-                                            @"(?'hex'(?i:0x[\da-f]+))|" +
+        static Regex regTokens = new Regex(@"(?:""(?'str'[^""]|"""")*""|" +
+                                            @"(?i:0x(?'hex'[\da-f]+))|" +
                                             @"(?'double'(?:\d*\.)?\d+[eE][-+]?\d+|\d*\.\d+)|" +
                                             @"(?'int'\d+)|" +
+                                            @"(?'bool'true|false)|" +
                                             @"(?'kwd'func|var|for|if|else|while|return)|" +
                                             @"(?'id'[\w_][\w\d_]*)|" +
                                             @"(?'sym'[-+*/%&^|<>!=]=|&&|\|\||<<|>>|[-+~/*%&^|?:=(){}[\];,<>]))", RegexOptions.Compiled);
@@ -65,13 +67,15 @@ namespace ConsoleApplication1
                             Token token = null;
                             var groups = match.Groups;
                             if (groups["str"].Success)
-                                token = new Token(TokenType.String, match.Value, line, match.Index);
+                                token = new Token(TokenType.String, groups["str"].Value, line, match.Index);
                             else if (groups["double"].Success)
                                 token = new Token(TokenType.Double, match.Value, line, match.Index);
                             else if (groups["int"].Success)
                                 token = new Token(TokenType.Integer, match.Value, line, match.Index);
                             else if (groups["hex"].Success)
-                                token = new Token(TokenType.HexNumber, match.Value, line, match.Index);
+                                token = new Token(TokenType.HexNumber, groups["hex"].Value, line, match.Index);
+                            else if (groups["bool"].Success)
+                                token = new Token(TokenType.Boolean, match.Value, line, match.Index);
                             else if (groups["kwd"].Success)
                                 token = new Token(TokenType.Keyword, match.Value, line, match.Index);
                             else if (groups["id"].Success)
@@ -80,7 +84,7 @@ namespace ConsoleApplication1
                                 token = new Token(TokenType.Symbol, match.Value, line, match.Index);
                             if (token == null)
                                 throw new ApplicationException("Unknown token");
-                            Console.WriteLine("({0},{1},{2}) = {3}", token.Line, token.Column, token.Type, match.Value);
+                            Console.WriteLine("({0},{1},{2}): {3}", token.Line, token.Column, token.Type, match.Value);
                             if (last != null)
                                 last.Next = token;
                             last = token;
@@ -565,16 +569,14 @@ namespace ConsoleApplication1
             {
                 var startToken = token;
                 var token_copy = token;
-                var left = LExpr.Match(ref token);
+                var left = LExpr.Match(ref token_copy);
                 if (left == null)
                     return null;
 
                 // check for equality
-                if (!MatchSymbol(ref token, "=", false))
-                {
-                    token = token_copy;
+                if (!MatchSymbol(ref token_copy, "=", false))
                     return null;
-                }
+                token = token_copy;
 
                 // expression expected
                 var right = MatchExpr(ref token, true);
@@ -702,7 +704,7 @@ namespace ConsoleApplication1
         {
             var startToken = token;
             // check for func call
-            var funcCall = Expr_FuncCall.Match(ref token, false);
+            var funcCall = Expr_FuncCall.Match(ref token);
             if (funcCall != null)
                 return funcCall;
 
@@ -739,9 +741,17 @@ namespace ConsoleApplication1
             if (token.Type == TokenType.HexNumber)
             {
                 startToken = token;
-                int iValue = int.Parse(token.Value.Substring(2), NumberStyles.HexNumber);
+                int iValue = int.Parse(token.Value, NumberStyles.HexNumber);
                 token = token.Next;
                 return new Expr_Const(startToken, new ValueInt(iValue));
+            }
+            // check for boolean literal
+            if (token.Type == TokenType.Boolean)
+            {
+                startToken = token;
+                bool bValue = token.Value == "true";
+                token = token.Next;
+                return new Expr_Const(startToken, ValueBool.Box(bValue));
             }
 
             // check for list of values
@@ -1045,6 +1055,7 @@ namespace ConsoleApplication1
         {
             var stmt = Stmt_DefVar.Match(ref token) ??
                        Stmt_Assign.Match(ref token) ??
+                       Stmt_FuncCall.Match(ref token) ??
                        Stmt_For.Match(ref token) ??
                        Stmt_If.Match(ref token) ??
                        Stmt_While.Match(ref token) ??
@@ -1120,6 +1131,35 @@ namespace ConsoleApplication1
                 MatchSymbol(ref token, ";", true);
 
                 return new Stmt_Assign(startToken, expr);
+            }
+
+            public override void Execute(Context context)
+            {
+                Expr.Execute(context);
+            }
+        }
+
+        class Stmt_FuncCall : Stmt
+        {
+            public Expr_FuncCall Expr { get; private set; }
+
+            public Stmt_FuncCall(Token startToken, Expr_FuncCall expr)
+                : base(startToken)
+            {
+                Expr = expr;
+            }
+
+            public static Stmt_FuncCall Match(ref Token token)
+            {
+                var startToken = token;
+                var expr = Expr_FuncCall.Match(ref token);
+                if (expr == null)
+                    return null;
+
+                // match ;
+                MatchSymbol(ref token, ";", true);
+
+                return new Stmt_FuncCall(startToken, expr);
             }
 
             public override void Execute(Context context)
@@ -1362,7 +1402,7 @@ namespace ConsoleApplication1
                 ParamValues = new List<Expr>();
             }
 
-            public static Expr_FuncCall Match(ref Token token, bool insist)
+            public static Expr_FuncCall Match(ref Token token)
             {
                 var startToken = token;
                 // check for identifier
@@ -1372,7 +1412,7 @@ namespace ConsoleApplication1
                     return null;
 
                 // insist on (
-                if (!MatchSymbol(ref token_copy, "(", insist))
+                if (!MatchSymbol(ref token_copy, "(", false))
                     return null;
                 token = token_copy;
 

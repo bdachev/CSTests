@@ -8,6 +8,7 @@ string = '"' { [^"] | \" }  '"'
 integer = { digit }
 double = [ { digit } ] . { digit } [ (e|E) [+|-] { digit } ]
 hex_num = '0' (x|X) { hex_digit }
+boolean = true | false
 	   
 <expr> ::= <assign>
 	     | <cond_ex>
@@ -59,12 +60,13 @@ hex_num = '0' (x|X) { hex_digit }
 <unary_ex> ::= <prim_ex>
 			 | '-' <unary_ex> .
 
-<prim_ex> ::= <lvalue>
-			| string
+<prim_ex> ::= string
 			| double
 			| integer
 			| hex_num
-  		    | <func_call>
+			| boolean
+  		    | <lvalue>
+			| <func_call>
 			| '[' [ <expr> { ',' <expr> } ] ']'
 			| '(' <expr> ')' .
 
