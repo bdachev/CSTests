@@ -1,4 +1,4 @@
-﻿#define DUMP_TOKENS
+﻿//#define DUMP_TOKENS
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -44,14 +44,16 @@ namespace Trio.SharedLibrary
         }
 
         // reg-ex of the script language
-        static Regex regTokens = new Regex(@"""(?'str'(?:[^""]|\"")*)""|" +
+        static Regex regTokens = new Regex(@"(?'ws'\s+)|" +
+                                            @"""(?'str'(?:\\""|[^""])*)""|" +
                                             @"(?i:0x(?'hex'[\da-f]+))|" +
                                             @"(?'double'(?:\d*\.)?\d+[eE][-+]?\d+|\d*\.\d+)|" +
                                             @"(?'int'\d+)|" +
                                             @"\b(?'bool'true|false)\b|" +
                                             @"\b(?'kwd'func|var|foreach|for|in|if|else|while|return)\b|" +
                                             @"\b(?'id'[a-zA-Z_][a-zA-Z_\d]*)\b|" +
-                                            @"(?'sym'[-+*/%&^|<>!=]=|&&|\|\||<<|>>|[-+~/*%&^|?:=(){}[\];,<>])", RegexOptions.Compiled);
+                                            @"(?'sym'[-+*/%&^|<>!=]=|&&|\|\||<<|>>|[-+~/*%&^|?:=(){}[\];,<>])|" + 
+                                            @"(?'other'.)", RegexOptions.Compiled);
 
         static Token Tokenize(string text, string scriptName)
         {
@@ -83,6 +85,13 @@ namespace Trio.SharedLibrary
                     {
                         Token token = null;
                         var groups = match.Groups;
+                        if (groups["ws"].Success)
+                        {
+#if DUMP_TOKENS
+                            Console.WriteLine("{0}({1},{2},WhiteSpace)", scriptName, line + 1, match.Index);
+#endif
+                            continue;
+                        }
                         if (groups["str"].Success)
                             token = new Token(TokenType.String, EscapeSpecialChars(groups["str"].Value));
                         else if (groups["double"].Success)
@@ -99,16 +108,12 @@ namespace Trio.SharedLibrary
                             token = new Token(TokenType.Identifier, match.Value);
                         else if (groups["sym"].Success)
                             token = new Token(TokenType.Symbol, match.Value);
-                        if (token == null)
-                        {
-                            throw new ApplicationException("Unknown token");
-                        }
                         else
-                        {
-                            token.Line = line;
-                            token.Column = match.Index;
-                            token.ScriptName = scriptName;
-                        }
+                            throw new ApplicationException(string.Format("{0}({1},{2}) - unknown token {3}", scriptName, line + 1, match.Index, match.Value));
+
+                        token.Line = line;
+                        token.Column = match.Index;
+                        token.ScriptName = scriptName;
 #if DUMP_TOKENS
                         Console.WriteLine("{0}({1},{2},{3}): {4}", token.ScriptName, token.Line + 1, token.Column + 1, token.Type, match.Value);
 #endif
@@ -194,9 +199,9 @@ namespace Trio.SharedLibrary
             /// </summary>
             public ExecutionException(string message) : base(message) { }
         }
-        static void ThrowExecutionException(Token token, string message)
+        static ExecutionException ExecutionExceptionWithToken(Token token, string message)
         {
-            throw new ExecutionException(token == null ? message : string.Format("{0}({1},{2}): {3}", token.ScriptName, token.Line + 1, token.Column + 1, message));
+            return new ExecutionException(token == null ? message : string.Format("{0}({1},{2}): {3}", token.ScriptName, token.Line + 1, token.Column + 1, message));
         }
         /// <summary>
         /// Exception thrown by return statement used to escape from internal scope
@@ -226,6 +231,7 @@ namespace Trio.SharedLibrary
         const string _errfmtVariable_0_AlreadyDefined = "variable {0} already defined";
         const string _errfmtFunction_0_AlreadyDefined = "function {0} already defined";
         const string _errfmtVariable_0_NotDefined = "variable {0} not defined";
+        const string _errfmtVariable_0_NotInitialized = "variable {0} not initialized";
         const string _errfmtVariable_0_NotCollection = "variable {0} not collection";
         const string _errExpressionNotCollection = "expression is not collection";
         const string _errfmtFailedToApply_0_operator_1 = "failed to apply {0} operator - {1}";
@@ -260,7 +266,7 @@ namespace Trio.SharedLibrary
             {
                 var cond = Calculate(context) as ValueBool;
                 if (cond == null)
-                    ThrowExecutionException(StartToken, _errExpressionIsNotBoolean);
+                    throw ExecutionExceptionWithToken(StartToken, _errExpressionIsNotBoolean);
 
                 return cond.V;
             }
@@ -278,7 +284,7 @@ namespace Trio.SharedLibrary
             protected Value CheckValueNotNull(Value value, string errorMessage)
             {
                 if (value == null)
-                    ThrowExecutionException(StartToken, string.Format(_errfmtFailedToApply_0_operator_1, OpName, errorMessage));
+                    throw ExecutionExceptionWithToken(StartToken, string.Format(_errfmtFailedToApply_0_operator_1, OpName, errorMessage));
                 return value;
             }
         }
@@ -601,7 +607,7 @@ namespace Trio.SharedLibrary
             {
                 var var = context.GetVariable(Name, true);
                 if (var == null)
-                    ThrowExecutionException(StartToken, string.Format(_errfmtVariable_0_NotDefined, Name));
+                    throw ExecutionExceptionWithToken(StartToken, string.Format(_errfmtVariable_0_NotDefined, Name));
 
                 return var;
             }
@@ -609,7 +615,10 @@ namespace Trio.SharedLibrary
             public override Value Calculate(Context context)
             {
                 var var = GetVariable(context);
-                return var.Value;
+                var value = var.Value;
+                if (value == null)
+                    throw ExecutionExceptionWithToken(StartToken, string.Format(_errfmtVariable_0_NotInitialized, Name));
+                return value;
             }
 
             public override Value Assign(Context context, Value newValue)
@@ -635,19 +644,22 @@ namespace Trio.SharedLibrary
                 // get list var
                 var var = context.GetVariable(Name, true);
                 if (var == null)
-                    ThrowExecutionException(StartToken, string.Format(_errfmtVariable_0_NotDefined, Name));
-                var valueList = var.Value as ValueList;
+                    throw ExecutionExceptionWithToken(StartToken, string.Format(_errfmtVariable_0_NotDefined, Name));
+                var value = var.Value;
+                if (value == null)
+                    throw ExecutionExceptionWithToken(StartToken, string.Format(_errfmtVariable_0_NotInitialized, Name));
+                var valueList = value as ValueList;
                 if (valueList == null)
-                    ThrowExecutionException(StartToken, string.Format(_errfmtVariable_0_NotCollection, Name));
+                    throw ExecutionExceptionWithToken(StartToken, string.Format(_errfmtVariable_0_NotCollection, Name));
                 var list = valueList.V;
 
                 // calculate index
                 var valueIndex = ExprIndex.Calculate(context) as ValueInt;
                 if (valueIndex == null)
-                    ThrowExecutionException(StartToken, _errIndexExpressionIsNotInteger);
+                    throw ExecutionExceptionWithToken(StartToken, _errIndexExpressionIsNotInteger);
                 int index = valueIndex.V;
                 if (index < 0 || index >= list.Count)
-                    ThrowExecutionException(StartToken, string.Format(_errfmtIndexOutOfRange, index));
+                    throw ExecutionExceptionWithToken(StartToken, string.Format(_errfmtIndexOutOfRange, index));
 
                 return Tuple.Create(list, index);
             }
@@ -915,7 +927,7 @@ namespace Trio.SharedLibrary
                             TryApplyBinOpForString(startToken, binOp, value1, value2) ??
                             TryApplyBinOpForBool(startToken, binOp, value1, value2);
                 if (value == null)
-                    ThrowExecutionException(startToken, string.Format(_errfmtFailedToApply_0_operator_1, binOp.OpName, _errDefinedForCombinationOfInputValues));
+                    throw ExecutionExceptionWithToken(startToken, string.Format(_errfmtFailedToApply_0_operator_1, binOp.OpName, _errDefinedForCombinationOfInputValues));
                 return value;
             }
 
@@ -1219,7 +1231,7 @@ namespace Trio.SharedLibrary
             {
                 var var = GetVariable(name, false);
                 if (var != null)
-                    ThrowExecutionException(token as Token, string.Format(_errfmtVariable_0_AlreadyDefined, name));
+                    throw ExecutionExceptionWithToken(token as Token, string.Format(_errfmtVariable_0_AlreadyDefined, name));
 
                 var = new Variable(name);
                 _variables.Add(var);
@@ -1229,12 +1241,11 @@ namespace Trio.SharedLibrary
             /// Get function from the context
             /// </summary>
             /// <param name="name">Name of the function</param>
-            /// <param name="searchParents">True to search parents as well</param>
             /// <returns>Reference to function definition</returns>
-            public Func GetFunc(string name, bool searchParents)
+            public Func GetFunc(string name)
             {
                 return _funcs.FirstOrDefault(f => string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase)) ??
-                        (searchParents && Parent != null ? Parent.GetFunc(name, true) : null);
+                        (Parent != null ? Parent.GetFunc(name) : null);
             }
             /// <summary>
             /// Add function to the context
@@ -1243,9 +1254,9 @@ namespace Trio.SharedLibrary
             /// <param name="token">Optional token to be associated with the addition</param>
             public void AddFunc(Func func, object token = null)
             {
-                var var = GetFunc(func.Name, false);
+                var var = GetFunc(func.Name);
                 if (var != null)
-                    ThrowExecutionException(token as Token, string.Format(_errfmtFunction_0_AlreadyDefined, func.Name));
+                    throw ExecutionExceptionWithToken(token as Token, string.Format(_errfmtFunction_0_AlreadyDefined, func.Name));
 
                 _funcs.Add(func);
             }
@@ -1506,7 +1517,7 @@ namespace Trio.SharedLibrary
             {
                 var valueList = ExprColl.Calculate(context) as ValueList;
                 if (valueList == null)
-                    ThrowExecutionException(ExprColl.StartToken, _errExpressionNotCollection);
+                    throw ExecutionExceptionWithToken(ExprColl.StartToken, _errExpressionNotCollection);
                 var innerContext = new Context(context);
                 var var = innerContext.AddVariable(VarName, StartToken);
                 foreach (var value in valueList.V)
@@ -1748,12 +1759,12 @@ namespace Trio.SharedLibrary
 
             private Value Call(Context context, bool insistResult)
             {
-                var func = context.GetFunc(FuncName, true);
+                var func = context.GetFunc(FuncName);
                 if (func == null)
-                    ThrowExecutionException(StartToken, string.Format(_errfmtFunction_0_NotDefined, FuncName));
+                    throw ExecutionExceptionWithToken(StartToken, string.Format(_errfmtFunction_0_NotDefined, FuncName));
 
                 if (func.Params.Count != ParamValues.Count)
-                    ThrowExecutionException(StartToken, _errParametersMismatch);
+                    throw ExecutionExceptionWithToken(StartToken, _errParametersMismatch);
 
                 // calculate parameters
                 var innerContext = new Context(context);
@@ -1768,7 +1779,7 @@ namespace Trio.SharedLibrary
                     func.Execute(innerContext);
 
                     if (insistResult)
-                        ThrowExecutionException(StartToken, _errFunctionShouldReturnValue);
+                        throw ExecutionExceptionWithToken(StartToken, _errFunctionShouldReturnValue);
 
                     return null;
                 }
@@ -1776,7 +1787,7 @@ namespace Trio.SharedLibrary
                 {
                     var value = ex.Value;
                     if (insistResult && value == null)
-                        ThrowExecutionException(StartToken, _errFunctionShouldReturnValue);
+                        throw ExecutionExceptionWithToken(StartToken, _errFunctionShouldReturnValue);
                     return value;
                 }
             }
@@ -1832,6 +1843,7 @@ namespace Trio.SharedLibrary
         }
         #endregion primitives
 
+        #region functions
         /// <summary>
         /// Base class for functions
         /// </summary>
@@ -1858,6 +1870,87 @@ namespace Trio.SharedLibrary
             /// Abstract method called when executing the function
             /// </summary>
             public abstract void Execute(Context context);
+        }
+
+        class Func_ToString : Func
+        {
+            public Func_ToString()
+                : base("to_string")
+            {
+                Params.Add("_");
+            }
+
+            public override void Execute(Context context)
+            {
+                var var = context.GetVariable("_", false);
+                Debug.Assert(var != null);
+                var value = var.Value;
+                Debug.Assert(value != null);
+                // in case input is string just return it
+                var sValue = value as Value<string>;
+                if (sValue != null)
+                    throw new ReturnException(sValue);
+                // otherwise generate new string value from input value
+                throw new ReturnException(new ValueString(value.ToString()));
+            }
+        }
+
+        class Func_ToInt : Func
+        {
+            public Func_ToInt()
+                : base("to_int")
+            {
+                Params.Add("_");
+            }
+
+            public override void Execute(Context context)
+            {
+                var var = context.GetVariable("_", false);
+                Debug.Assert(var != null);
+                var value = var.Value;
+                Debug.Assert(value != null);
+
+                // if input is int just return it
+                var iValue = var.Value as ValueInt;
+                if (iValue != null)
+                    throw new ReturnException(iValue);
+
+                // convert double to int
+                var dValue = var.Value as ValueDouble;
+                if (dValue != null)
+                    throw new ReturnException(new ValueInt((int)dValue.V));
+
+                // convert bool to 0 or -1
+                var bValue = var.Value as ValueBool;
+                if (bValue != null)
+                    throw new ReturnException(new ValueInt(bValue.V ? -1 : 0));
+
+                throw new ReturnException(value);
+            }
+        }
+
+        class Func_CountOf : Func
+        {
+            public Func_CountOf()
+                : base("count_of")
+            {
+                Params.Add("_");
+            }
+
+            public override void Execute(Context context)
+            {
+                var var = context.GetVariable("_", false);
+                Debug.Assert(var != null);
+                var value = var.Value;
+                Debug.Assert(value != null);
+
+                // if input is int just return it
+                var lValue = var.Value as ValueList;
+                if (lValue == null)
+                    throw new ExecutionException(_errExpressionNotCollection);
+
+                throw new ReturnException(new ValueInt(lValue.V.Count));
+            }
         }
 
         class Func_With_Block : Func
@@ -1917,12 +2010,19 @@ namespace Trio.SharedLibrary
                 Block.Execute(context);
             }
         }
+        #endregion // functions
 
         /// <summary>
         /// Instance of script
         /// </summary>
         public class Script
         {
+            static Func[] _internalFuncs = new Func[]
+            {
+                new Func_CountOf(),
+                new Func_ToInt(),
+                new Func_ToString(),
+            };
             List<Func_With_Block> _funcs = new List<Func_With_Block>();
             Stmt_Block _stmt = new Stmt_Block(null);
 
@@ -1933,9 +2033,13 @@ namespace Trio.SharedLibrary
             public void Execute(Context context)
             {
                 var innerContext = new Context(context);
+                // add internal funcs to the context
+                foreach (var func in _internalFuncs)
+                    innerContext.AddFunc(func);
+                // add functions defined in the script to the context
                 foreach (var func in _funcs)
                     innerContext.AddFunc(func, func.StartToken);
-
+                // execute the script
                 _stmt.Execute(innerContext);
             }
             // Parse script from tokens
