@@ -1,4 +1,5 @@
-﻿using System;
+﻿#define DUMP_TOKENS
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -30,81 +31,141 @@ namespace Trio.SharedLibrary
         class Token
         {
             public TokenType Type;
-            public readonly int Line;
-            public readonly int Column;
-            public readonly string Value;
+            public int Line;
+            public int Column;
+            public string ScriptName;
+            public string Value;
             public Token Next;
-            public Token(TokenType type, string value, int line, int column)
+            public Token(TokenType type, string value)
             {
                 Type = type;
-                Line = line;
-                Column = column;
                 Value = value;
             }
         }
 
         // reg-ex of the script language
-        static Regex regTokens = new Regex(@"""(?'str'(?:[^""]|"""")*)""|" +
+        static Regex regTokens = new Regex(@"""(?'str'(?:[^""]|\"")*)""|" +
                                             @"(?i:0x(?'hex'[\da-f]+))|" +
                                             @"(?'double'(?:\d*\.)?\d+[eE][-+]?\d+|\d*\.\d+)|" +
                                             @"(?'int'\d+)|" +
-                                            @"(?'bool'true|false)|" +
-                                            @"(?'kwd'func|var|foreach|for|in|if|else|while|return)|" +
-                                            @"(?'id'[\w_][\w\d_]*)|" +
+                                            @"\b(?'bool'true|false)\b|" +
+                                            @"\b(?'kwd'func|var|foreach|for|in|if|else|while|return)\b|" +
+                                            @"\b(?'id'[a-zA-Z_][a-zA-Z_\d]*)\b|" +
                                             @"(?'sym'[-+*/%&^|<>!=]=|&&|\|\||<<|>>|[-+~/*%&^|?:=(){}[\];,<>])", RegexOptions.Compiled);
 
-        static char[] _CRorNL = new char[] { '\n', '\r' };
-        static Token Tokenize(string text)
+        static Token Tokenize(string text, string scriptName)
         {
-            var lines = text.Split(_CRorNL, StringSplitOptions.RemoveEmptyEntries);
-            return Tokenize(lines);
+            if (text == null)
+                return null;
+
+            // unify line endings
+            text = text.Replace("\r\n", "\n");
+            // split by new line
+            var lines = text.Split('\n');
+            // tokenize by lines
+            return Tokenize(lines, scriptName);
         }
 
-        static Token Tokenize(string[] lines)
+        static Token Tokenize(string[] lines, string scriptName)
         {
+            if (lines == null || lines.Length == 0)
+                return null;
+
             Token first = null;
             Token last = null;
-            if (lines != null && lines.Length > 0)
+            for (int line = 0; line < lines.Length; line++)
             {
-                for (int line = 0; line < lines.Length; line++)
+                string text = lines[line];
+                var matches = regTokens.Matches(text);
+                foreach (Match match in matches)
                 {
-                    string text = lines[line];
-                    var matches = regTokens.Matches(text);
-                    foreach (Match match in matches)
+                    if (match.Success)
                     {
-                        if (match.Success)
+                        Token token = null;
+                        var groups = match.Groups;
+                        if (groups["str"].Success)
+                            token = new Token(TokenType.String, EscapeSpecialChars(groups["str"].Value));
+                        else if (groups["double"].Success)
+                            token = new Token(TokenType.Double, match.Value);
+                        else if (groups["int"].Success)
+                            token = new Token(TokenType.Integer, match.Value);
+                        else if (groups["hex"].Success)
+                            token = new Token(TokenType.HexNumber, groups["hex"].Value);
+                        else if (groups["bool"].Success)
+                            token = new Token(TokenType.Boolean, match.Value);
+                        else if (groups["kwd"].Success)
+                            token = new Token(TokenType.Keyword, match.Value);
+                        else if (groups["id"].Success)
+                            token = new Token(TokenType.Identifier, match.Value);
+                        else if (groups["sym"].Success)
+                            token = new Token(TokenType.Symbol, match.Value);
+                        if (token == null)
                         {
-                            Token token = null;
-                            var groups = match.Groups;
-                            if (groups["str"].Success)
-                                token = new Token(TokenType.String, groups["str"].Value, line, match.Index);
-                            else if (groups["double"].Success)
-                                token = new Token(TokenType.Double, match.Value, line, match.Index);
-                            else if (groups["int"].Success)
-                                token = new Token(TokenType.Integer, match.Value, line, match.Index);
-                            else if (groups["hex"].Success)
-                                token = new Token(TokenType.HexNumber, groups["hex"].Value, line, match.Index);
-                            else if (groups["bool"].Success)
-                                token = new Token(TokenType.Boolean, match.Value, line, match.Index);
-                            else if (groups["kwd"].Success)
-                                token = new Token(TokenType.Keyword, match.Value, line, match.Index);
-                            else if (groups["id"].Success)
-                                token = new Token(TokenType.Identifier, match.Value, line, match.Index);
-                            else if (groups["sym"].Success)
-                                token = new Token(TokenType.Symbol, match.Value, line, match.Index);
-                            if (token == null)
-                                throw new ApplicationException("Unknown token");
-                            Console.WriteLine("({0},{1},{2}): {3}", token.Line, token.Column, token.Type, match.Value);
-                            if (last != null)
-                                last.Next = token;
-                            last = token;
-                            if (first == null)
-                                first = token;
+                            throw new ApplicationException("Unknown token");
                         }
+                        else
+                        {
+                            token.Line = line;
+                            token.Column = match.Index;
+                            token.ScriptName = scriptName;
+                        }
+#if DUMP_TOKENS
+                        Console.WriteLine("{0}({1},{2},{3}): {4}", token.ScriptName, token.Line + 1, token.Column + 1, token.Type, match.Value);
+#endif
+                        if (last != null)
+                            last.Next = token;
+                        last = token;
+                        if (first == null)
+                            first = token;
                     }
                 }
             }
             return first;
+        }
+
+        static Regex _regStringEscape = new Regex(@"\\(?:(?'oct'[0-6]{1,3})|x(?'hex'(?-i:[\da-f]{1,4}))|(?'char'.))", RegexOptions.Compiled);
+
+        static string EscapeSpecialChars(string input)
+        {
+            return input == null ? null :
+                    _regStringEscape.Replace(input, m =>
+                        {
+                            var groups = m.Groups;
+                            if (groups["oct"].Success)
+                            {
+                                short oct = Convert.ToInt16(groups["oct"].Value, 8);
+                                return Convert.ToChar(oct).ToString();
+                            }
+                            else if (groups["hex"].Success)
+                            {
+                                short hex = Convert.ToInt16(groups["hex"].Value, 16);
+                                return Convert.ToChar(hex).ToString();
+                            }
+                            else
+                            {
+                                Debug.Assert(groups["char"].Success);
+                                var value = groups["char"].Value;
+                                switch (value)
+                                {
+                                    case "a":
+                                        return "\a";
+                                    case "b":
+                                        return "\b";
+                                    case "t":
+                                        return "\t";
+                                    case "v":
+                                        return "\v";
+                                    case "n":
+                                        return "\n";
+                                    case "r":
+                                        return "\r";
+                                    case "f":
+                                        return "\f";
+                                    default:
+                                        return value;
+                                }
+                            }
+                        });
         }
         #endregion tokens
 
@@ -121,7 +182,7 @@ namespace Trio.SharedLibrary
         }
         static ParserException ParserExceptionWithToken(Token token, string message)
         {
-            return new ParserException(token == null ? message : string.Format("({0},{1}): {2}", token.Line + 1, token.Column + 1, message));
+            return new ParserException(token == null ? message : string.Format("{0}({1},{2}): {3}", token.ScriptName, token.Line + 1, token.Column + 1, message));
         }
         /// <summary>
         /// Exception thrown during execution phase
@@ -135,7 +196,7 @@ namespace Trio.SharedLibrary
         }
         static void ThrowExecutionException(Token token, string message)
         {
-            throw new ExecutionException(token == null ? message : string.Format("({0},{1}): {2}", token.Line + 1, token.Column + 1, message));
+            throw new ExecutionException(token == null ? message : string.Format("{0}({1},{2}): {3}", token.ScriptName, token.Line + 1, token.Column + 1, message));
         }
         /// <summary>
         /// Exception thrown by return statement used to escape from internal scope
@@ -1902,17 +1963,17 @@ namespace Trio.SharedLibrary
             /// <summary>
             /// Parse script as single string
             /// </summary>
-            public static Script Parse(string text)
+            public static Script Parse(string text, string scriptName)
             {
-                var token = Tokenize(text);
+                var token = Tokenize(text, scriptName);
                 return Parse(token);
             }
             /// <summary>
             /// Parse script as array of lines
             /// </summary>
-            public static Script Parse(string[] lines)
+            public static Script Parse(string[] lines, string scriptName)
             {
-                var token = Tokenize(lines);
+                var token = Tokenize(lines, scriptName);
                 return Parse(token);
             }
         }
