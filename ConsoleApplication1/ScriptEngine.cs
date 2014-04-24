@@ -1,4 +1,4 @@
-﻿//#define DUMP_TOKENS
+﻿#define DUMP_TOKENS
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -44,16 +44,17 @@ namespace Trio.SharedLibrary
         }
 
         // reg-ex of the script language
-        static Regex regTokens = new Regex(@"(?'ws'\s+)|" +
-                                            @"""(?'str'(?:\\""|[^""])*)""|" +
-                                            @"(?i:0x(?'hex'[\da-f]+))|" +
-                                            @"(?'double'(?:\d*\.)?\d+[eE][-+]?\d+|\d*\.\d+)|" +
-                                            @"(?'int'\d+)|" +
-                                            @"\b(?'bool'true|false)\b|" +
-                                            @"\b(?'kwd'func|var|foreach|for|in|if|else|while|return)\b|" +
-                                            @"\b(?'id'[a-zA-Z_][a-zA-Z_\d]*)\b|" +
-                                            @"(?'sym'[-+*/%&^|<>!=]=|&&|\|\||<<|>>|[-+~/*%&^|?:=(){}[\];,<>])|" + 
-                                            @"(?'other'.)", RegexOptions.Compiled);
+        static Regex regTokens = new Regex(@"(?'cmnt'//.+$)|" + // single line comment
+                                           @"(?'ws'\s+)|" + // white space
+                                           @"""(?'str'(?:\\""|[^""])*)""|" + // string literal
+                                           @"(?i:0x(?'hex'[\da-f]+))|" + // hexadecimal literal
+                                           @"(?'double'(?:\d*\.)?\d+[eE][-+]?\d+|\d*\.\d+)|" + // double literal
+                                           @"(?'int'\d+)|" + // integer literal
+                                           @"\b(?'bool'true|false)\b|" + // boolean literal
+                                           @"\b(?'kwd'func|var|foreach|for|in|if|else|while|return)\b|" + // keyword
+                                           @"\b(?'id'[a-zA-Z_][a-zA-Z_\d]*)\b|" + // identifier
+                                           @"(?'sym'[-+*/%&^|<>!=]=|&&|\|\||<<|>>|[-+~/*%&^|?:=(){}[\];,<>])|" + // symbol
+                                           @"(?'other'.)", RegexOptions.Compiled); // anything else -  not recognized
 
         static Token Tokenize(string text, string scriptName)
         {
@@ -85,10 +86,17 @@ namespace Trio.SharedLibrary
                     {
                         Token token = null;
                         var groups = match.Groups;
+                        if (groups["cmnt"].Success)
+                        {
+#if DUMP_TOKENS
+                            Console.WriteLine("{0}({1},{2},Comment) : {3}", scriptName, line + 1, match.Index + 1, match.Value);
+#endif
+                            continue;
+                        }
                         if (groups["ws"].Success)
                         {
 #if DUMP_TOKENS
-                            Console.WriteLine("{0}({1},{2},WhiteSpace)", scriptName, line + 1, match.Index);
+                            Console.WriteLine("{0}({1},{2},WhiteSpace)", scriptName, line + 1, match.Index + 1);
 #endif
                             continue;
                         }
@@ -109,7 +117,7 @@ namespace Trio.SharedLibrary
                         else if (groups["sym"].Success)
                             token = new Token(TokenType.Symbol, match.Value);
                         else
-                            throw new ApplicationException(string.Format("{0}({1},{2}) - unknown token {3}", scriptName, line + 1, match.Index, match.Value));
+                            throw new ApplicationException(string.Format("{0}({1},{2}) - unknown token {3}", scriptName, line + 1, match.Index + 1, match.Value));
 
                         token.Line = line;
                         token.Column = match.Index;
