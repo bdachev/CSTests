@@ -53,7 +53,7 @@ namespace Trio.SharedLibrary
                                            @"\b(?'bool'true|false)\b|" + // boolean literal
                                            @"\b(?'kwd'func|var|foreach|for|in|if|else|while|return)\b|" + // keyword
                                            @"\b(?'id'[a-zA-Z_][a-zA-Z_\d]*)\b|" + // identifier
-                                           @"(?'sym'[-+*/%&^|<>!=]=|&&|\|\||<<|>>|[-+~/*%&^|?:=(){}[\];,<>])|" + // symbol
+                                           @"(?'sym'\.\.\.|[-+*/%&^|<>!=]=|&&|\|\||<<|>>|[-+~/*%&^|?:=(){}[\];,<>])|" + // symbol
                                            @"(?'other'.)", RegexOptions.Compiled); // anything else -  not recognized
 
         static Token Tokenize(string text, string scriptName)
@@ -247,7 +247,7 @@ namespace Trio.SharedLibrary
         const string _errfmtIndexOutOfRange = "index {0} out of range";
         const string _errBooleanValueExpected = "boolean value expected";
         const string _errfmtFunction_0_NotDefined = "function {0} not defined";
-        const string _errParametersMismatch = "parameters mismatch";
+        const string _errParametersCountMismatch = "parameters count mismatch";
         const string _errFunctionShouldReturnValue = "function should return value";
         const string _errExpressionIsNotBoolean = "expression is not boolean";
         const string _errLeftOperandIsNotBoolean = "left operand is not boolean";
@@ -256,6 +256,7 @@ namespace Trio.SharedLibrary
         const string _errInnerValueIsNotNumber = "inner value is not number";
         const string _errInnerValueIsNotInteger = "inner value is not integer";
         const string _errDefinedForCombinationOfInputValues = "not defined for combination of input values";
+        const string _errEllipsisShouldBeLast = "ellipsis should be at the end in the parameter list";
         #endregion errors
 
         #region expressions
@@ -1706,14 +1707,14 @@ namespace Trio.SharedLibrary
         class Expr_FuncCall : Expr
         {
             public string FuncName { get; private set; }
-            public List<Expr> ParamValues { get; private set; }
+            public List<Expr> ParamExprs { get; private set; }
 
             public Expr_FuncCall(Token startToken, string funcName)
                 : base(startToken)
             {
                 FuncName = funcName;
 
-                ParamValues = new List<Expr>();
+                ParamExprs = new List<Expr>();
             }
 
             public static Expr_FuncCall Match(ref Token token)
@@ -1749,7 +1750,7 @@ namespace Trio.SharedLibrary
 
                     // get param value
                     var valueExpr = MatchExpr(ref token, true);
-                    funcCall.ParamValues.Add(valueExpr);
+                    funcCall.ParamExprs.Add(valueExpr);
                 }
 
                 return funcCall;
@@ -1771,15 +1772,33 @@ namespace Trio.SharedLibrary
                 if (func == null)
                     throw ExecutionExceptionWithToken(StartToken, string.Format(_errfmtFunction_0_NotDefined, FuncName));
 
-                if (func.Params.Count != ParamValues.Count)
-                    throw ExecutionExceptionWithToken(StartToken, _errParametersMismatch);
+                bool hasEllipsis = func.HasEllipsis;
+                int paramCount = func.Params.Count;
+                int exprCount = ParamExprs.Count;
+                if (paramCount > exprCount || !hasEllipsis && paramCount != exprCount)
+                    throw ExecutionExceptionWithToken(StartToken, _errParametersCountMismatch);
 
                 // calculate parameters
                 var innerContext = new Context(context);
-                for (int i = 0; i < ParamValues.Count; i++)
+                int param;
+                for (param = 0; param < paramCount; param++)
                 {
-                    var var = innerContext.AddVariable(func.Params[i], StartToken);
-                    var.Value = ParamValues[i].Calculate(context);
+                    var var = innerContext.AddVariable(func.Params[param], StartToken);
+                    var.Value = ParamExprs[param].Calculate(context);
+                }
+                Debug.Assert(param == exprCount || hasEllipsis);
+
+                // in case function has ellipsis add remaining params as a list
+                if (hasEllipsis)
+                {
+                    var remainingValues = new List<Value>();
+                    for (; param < exprCount; param++)
+                    {
+                        var value = ParamExprs[param].Calculate(context);
+                        remainingValues.Add(value);
+                    }
+                    var var = innerContext.AddVariable("...", StartToken);
+                    var.Value = new ValueList(remainingValues);
                 }
 
                 try
@@ -1866,11 +1885,16 @@ namespace Trio.SharedLibrary
             /// </summary>
             public List<string> Params { get; private set; }
             /// <summary>
+            /// True if function has variable parameter count
+            /// </summary>
+            public bool HasEllipsis { get; private set; }
+            /// <summary>
             /// Constructor
             /// </summary>
-            public Func(string name)
+            public Func(string name, bool hasEllipsis)
             {
                 Name = name;
+                HasEllipsis = hasEllipsis;
                 Params = new List<string>();
             }
 
@@ -1883,7 +1907,7 @@ namespace Trio.SharedLibrary
         class Func_ToString : Func
         {
             public Func_ToString()
-                : base("to_string")
+                : base("to_string", false)
             {
                 Params.Add("_");
             }
@@ -1906,7 +1930,7 @@ namespace Trio.SharedLibrary
         class Func_ToInt : Func
         {
             public Func_ToInt()
-                : base("to_int")
+                : base("to_int", false)
             {
                 Params.Add("_");
             }
@@ -1940,7 +1964,7 @@ namespace Trio.SharedLibrary
         class Func_CountOf : Func
         {
             public Func_CountOf()
-                : base("count_of")
+                : base("count_of", false)
             {
                 Params.Add("_");
             }
@@ -1967,8 +1991,8 @@ namespace Trio.SharedLibrary
 
             public Stmt Block { get; private set; }
 
-            public Func_With_Block(Token startToken, string name, Stmt block)
-                : base(name)
+            public Func_With_Block(Token startToken, string name, bool hasEllipsis, Stmt block)
+                : base(name, hasEllipsis)
             {
                 StartToken = startToken;
                 Block = block;
@@ -1989,11 +2013,16 @@ namespace Trio.SharedLibrary
 
                 var @params = new List<string>();
                 bool nextParam = false;
+                bool hasEllipsis = false;
                 for (; ; )
                 {
                     // check for )
                     if (MatchSymbol(ref token, ")", false))
                         break;
+
+                    // found ellipsis but there are more parameters
+                    if (hasEllipsis)
+                        throw ParserExceptionWithToken(token, _errEllipsisShouldBeLast);
 
                     if (nextParam)
                     {
@@ -2001,6 +2030,13 @@ namespace Trio.SharedLibrary
                         MatchSymbol(ref token, ",", true);
                     }
                     nextParam = true;
+
+                    if (MatchSymbol(ref token, "...", false))
+                    {
+                        hasEllipsis = true;
+                        continue;
+                    }
+
                     // get param name
                     var param = MatchIdent(ref token, true);
                     @params.Add(param);
@@ -2008,7 +2044,7 @@ namespace Trio.SharedLibrary
 
                 // block should follow
                 var block = Stmt_Block.Match(ref token, true);
-                var func = new Func_With_Block(startToken, name, block);
+                var func = new Func_With_Block(startToken, name, hasEllipsis, block);
                 func.Params.AddRange(@params);
                 return func;
             }

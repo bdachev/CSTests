@@ -80,14 +80,12 @@ lvalue ::= ident [ '[' <expr> ']' ]
 		 | foreach '(' var ident in <expr> ')' <stmt>
 		 | if '(' <expr> ')' <stmt> [ else <stmt> ]
 		 | while '(' <expr> ')' <stmt>
-		 | '{' <block> '}' .
+		 | '{' <stmt> '}' .
 	
-<block> ::= { <stmt> | <func> }
-	 
-<func> ::= func ident '(' ')' <block>
-		 | func ident '(' ident { ',' ident} ')' <block> .
+<func> ::= func ident '(' [...] ')' <block>
+		 | func ident '(' ident { ',' ident } [ , ... ] ')' <block> .
 
 <func_call> ::= ident '(' ')'
 		      | ident '(' <expr> {',' <expr> } ')'
 	 
-<script> ::= <block> .
+<script> ::= <stmt> | <func> .
