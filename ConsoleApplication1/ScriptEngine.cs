@@ -1,4 +1,4 @@
-﻿#define DUMP_TOKENS
+﻿//#define DUMP_TOKENS
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
