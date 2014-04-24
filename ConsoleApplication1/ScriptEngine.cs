@@ -51,7 +51,7 @@ namespace Trio.SharedLibrary
                                            @"(?'double'(?:\d*\.)?\d+[eE][-+]?\d+|\d*\.\d+)|" + // double literal
                                            @"(?'int'\d+)|" + // integer literal
                                            @"\b(?'bool'true|false)\b|" + // boolean literal
-                                           @"\b(?'kwd'func|var|foreach|for|in|if|else|while|return)\b|" + // keyword
+                                           @"\b(?'kwd'func|var|foreach|for|in|if|else|while|return|break|continue)\b|" + // keyword
                                            @"\b(?'id'[a-zA-Z_][a-zA-Z_\d]*)\b|" + // identifier
                                            @"(?'sym'\.\.\.|[-+*/%&^|<>!=]=|&&|\|\||<<|>>|[-+~/*%&^|?:=(){}[\];,<>])|" + // symbol
                                            @"(?'other'.)", RegexOptions.Compiled); // anything else -  not recognized
@@ -211,21 +211,27 @@ namespace Trio.SharedLibrary
         {
             return new ExecutionException(token == null ? message : string.Format("{0}({1},{2}): {3}", token.ScriptName, token.Line + 1, token.Column + 1, message));
         }
-        /// <summary>
-        /// Exception thrown by return statement used to escape from internal scope
-        /// </summary>
-        public class ReturnException : ApplicationException
+
+        class ReturnException : ApplicationException
         {
-            /// <summary>
-            /// Optional returned value
-            /// </summary>
+            public Token Token { get; private set; }
             public Value Value { get; private set; }
-            /// <summary>
-            /// Constructor
-            /// </summary>
-            public ReturnException(Value value)
+
+            public ReturnException(Token token, Value value)
             {
+                Token = token;
                 Value = value;
+            }
+        }
+
+        class BreakOrContinueException : ApplicationException
+        {
+            public Token Token { get; private set; }
+            public bool Break { get; private set; }
+            public BreakOrContinueException(Token token, bool @break)
+            {
+                Token = token;
+                Break = @break;
             }
         }
 
@@ -255,8 +261,12 @@ namespace Trio.SharedLibrary
         const string _errInnerValueIsNotBoolean = "inner value is not boolean";
         const string _errInnerValueIsNotNumber = "inner value is not number";
         const string _errInnerValueIsNotInteger = "inner value is not integer";
+        const string _errUnableToConvertToIngeger = "unable to convert value to integer";
         const string _errDefinedForCombinationOfInputValues = "not defined for combination of input values";
         const string _errEllipsisShouldBeLast = "ellipsis should be at the end in the parameter list";
+        const string _errBreakWithoutSurroundingForOrWhile = "break without surrounding for or while";
+        const string _errContinueWithoutSurroundingForOrWhile = "continue without surrounding for or while";
+        const string _errfmtUnexpectedToken_0_ = "unexpected token {0}";
         #endregion errors
 
         #region expressions
@@ -1294,6 +1304,7 @@ namespace Trio.SharedLibrary
                        Stmt_If.Match(ref token) ??
                        Stmt_While.Match(ref token) ??
                        Stmt_Block.Match(ref token, false) ??
+                       Stmt_BreakOrContinue.Match(ref token) ??
                        (Stmt)Stmt_Return.Match(ref token);
             if (insist && stmt == null)
                 throw ParserExceptionWithToken(token, _errStatementExpected);
@@ -1474,7 +1485,17 @@ namespace Trio.SharedLibrary
                     var.Value = value;
                 }
                 for (; _expr2.CheckCondition(innerContext); _expr3.Calculate(innerContext))
-                    Stmt.Execute(innerContext);
+                {
+                    try
+                    {
+                        Stmt.Execute(innerContext);
+                    }
+                    catch (BreakOrContinueException ex)
+                    {
+                        if (ex.Break)
+                            break;
+                    }
+                }
             }
         }
 
@@ -1532,7 +1553,15 @@ namespace Trio.SharedLibrary
                 foreach (var value in valueList.V)
                 {
                     var.Value = value;
-                    Stmt.Execute(innerContext);
+                    try
+                    {
+                        Stmt.Execute(innerContext);
+                    }
+                    catch (BreakOrContinueException ex)
+                    {
+                        if (ex.Break)
+                            break;
+                    }
                 }
             }
         }
@@ -1632,7 +1661,15 @@ namespace Trio.SharedLibrary
                 var innerContext = new Context(context);
                 while (Expr.CheckCondition(innerContext))
                 {
-                    Stmt.Execute(innerContext);
+                    try
+                    {
+                        Stmt.Execute(innerContext);
+                    }
+                    catch (BreakOrContinueException ex)
+                    {
+                        if (ex.Break)
+                            break;
+                    }
                 }
             }
         }
@@ -1665,7 +1702,37 @@ namespace Trio.SharedLibrary
             public override void Execute(Context context)
             {
                 Value value = Expr == null ? null : value = Expr.Calculate(context);
-                throw new ReturnException(value);
+                throw new ReturnException(StartToken, value);
+            }
+        }
+
+        class Stmt_BreakOrContinue : Stmt
+        {
+            public bool Break { get; private set; }
+
+            public Stmt_BreakOrContinue(Token startToken, bool @break)
+                : base(startToken)
+            {
+                Break = @break;
+            }
+
+            public static Stmt_BreakOrContinue Match(ref Token token)
+            {
+                var startToken = token;
+                // check for both break and continue
+                bool isBreak = MatchKeyword(ref token, "break");
+                if (!isBreak && !MatchKeyword(ref token, "continue"))
+                    return null;
+
+                // match ;
+                MatchSymbol(ref token, ";", true);
+
+                return new Stmt_BreakOrContinue(startToken, isBreak);
+            }
+
+            public override void Execute(Context context)
+            {
+                throw new BreakOrContinueException(StartToken, Break);
             }
         }
 
@@ -1801,22 +1868,12 @@ namespace Trio.SharedLibrary
                     var.Value = new ValueList(remainingValues);
                 }
 
-                try
-                {
-                    func.Execute(innerContext);
+                var result = func.Execute(innerContext);
 
-                    if (insistResult)
-                        throw ExecutionExceptionWithToken(StartToken, _errFunctionShouldReturnValue);
+                if (insistResult && result == null)
+                    throw ExecutionExceptionWithToken(StartToken, _errFunctionShouldReturnValue);
 
-                    return null;
-                }
-                catch (ReturnException ex)
-                {
-                    var value = ex.Value;
-                    if (insistResult && value == null)
-                        throw ExecutionExceptionWithToken(StartToken, _errFunctionShouldReturnValue);
-                    return value;
-                }
+                return result;
             }
         }
         #endregion statements
@@ -1901,7 +1958,7 @@ namespace Trio.SharedLibrary
             /// <summary>
             /// Abstract method called when executing the function
             /// </summary>
-            public abstract void Execute(Context context);
+            public abstract Value Execute(Context context);
         }
 
         class Func_ToString : Func
@@ -1912,7 +1969,7 @@ namespace Trio.SharedLibrary
                 Params.Add("_");
             }
 
-            public override void Execute(Context context)
+            public override Value Execute(Context context)
             {
                 var var = context.GetVariable("_", false);
                 Debug.Assert(var != null);
@@ -1921,9 +1978,9 @@ namespace Trio.SharedLibrary
                 // in case input is string just return it
                 var sValue = value as Value<string>;
                 if (sValue != null)
-                    throw new ReturnException(sValue);
+                    return sValue;
                 // otherwise generate new string value from input value
-                throw new ReturnException(new ValueString(value.ToString()));
+                return new ValueString(value.ToString());
             }
         }
 
@@ -1935,7 +1992,7 @@ namespace Trio.SharedLibrary
                 Params.Add("_");
             }
 
-            public override void Execute(Context context)
+            public override Value Execute(Context context)
             {
                 var var = context.GetVariable("_", false);
                 Debug.Assert(var != null);
@@ -1945,19 +2002,19 @@ namespace Trio.SharedLibrary
                 // if input is int just return it
                 var iValue = var.Value as ValueInt;
                 if (iValue != null)
-                    throw new ReturnException(iValue);
+                    return iValue;
 
                 // convert double to int
                 var dValue = var.Value as ValueDouble;
                 if (dValue != null)
-                    throw new ReturnException(new ValueInt((int)dValue.V));
+                    return new ValueInt((int)dValue.V);
 
                 // convert bool to 0 or -1
                 var bValue = var.Value as ValueBool;
                 if (bValue != null)
-                    throw new ReturnException(new ValueInt(bValue.V ? -1 : 0));
+                    return new ValueInt(bValue.V ? -1 : 0);
 
-                throw new ReturnException(value);
+                throw new ExecutionException(_errUnableToConvertToIngeger);
             }
         }
 
@@ -1969,7 +2026,7 @@ namespace Trio.SharedLibrary
                 Params.Add("_");
             }
 
-            public override void Execute(Context context)
+            public override Value Execute(Context context)
             {
                 var var = context.GetVariable("_", false);
                 Debug.Assert(var != null);
@@ -1981,7 +2038,7 @@ namespace Trio.SharedLibrary
                 if (lValue == null)
                     throw new ExecutionException(_errExpressionNotCollection);
 
-                throw new ReturnException(new ValueInt(lValue.V.Count));
+                return new ValueInt(lValue.V.Count);
             }
         }
 
@@ -2049,9 +2106,21 @@ namespace Trio.SharedLibrary
                 return func;
             }
 
-            public override void Execute(Context context)
+            public override Value Execute(Context context)
             {
-                Block.Execute(context);
+                try
+                {
+                    Block.Execute(context);
+                    return null;
+                }
+                catch (BreakOrContinueException ex)
+                {
+                    throw ExecutionExceptionWithToken(ex.Token, ex.Break ? _errBreakWithoutSurroundingForOrWhile : _errContinueWithoutSurroundingForOrWhile);
+                }
+                catch (ReturnException ex)
+                {
+                    return ex.Value;
+                }
             }
         }
         #endregion // functions
@@ -2103,6 +2172,10 @@ namespace Trio.SharedLibrary
                     {
                         script._funcs.Add(func);
                         continue;
+                    }
+                    if (token != null)
+                    {
+                        throw ParserExceptionWithToken(token, string.Format(_errfmtUnexpectedToken_0_, token.Value));
                     }
                 }
 
