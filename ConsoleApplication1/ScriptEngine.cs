@@ -553,7 +553,7 @@ namespace Trio.SharedLibrary
                 : base(startToken)
             {
                 Oper = oper;
-                Expr = Expr;
+                Expr = expr;
             }
 
             public override Value Calculate(Context context)
