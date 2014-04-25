@@ -52,8 +52,8 @@ namespace Trio.SharedLibrary
                                            @"(?'int'\d+)|" + // integer literal
                                            @"\b(?'bool'true|false)\b|" + // boolean literal
                                            @"\b(?'kwd'func|var|foreach|for|in|if|else|while|return|break|continue)\b|" + // keyword
-                                           @"\b(?'id'[a-zA-Z_][a-zA-Z_\d]*)\b|" + // identifier
-                                           @"(?'sym'\.\.\.|[<>!=]=|&&|\|\||<<|>>|[-+~!/*%&^|?:=(){}[\];,<>])|" + // symbol (-+*/%&^| - these symbols are not yet supported as assignments)
+                                           @"(?'id'\b[a-zA-Z_][a-zA-Z_\d]*\b|\.\.\.)|" + // identifier
+                                           @"(?'sym'[<>!=]=|&&|\|\||<<|>>|[-+~!/*%&^|?:=(){}[\];,<>])|" + // symbol (-+*/%&^| - these symbols are not yet supported as assignments)
                                            @"(?'other'.)", RegexOptions.Compiled); // anything else -  not recognized
 
         static Token Tokenize(string text, string scriptName)
@@ -2090,14 +2090,14 @@ namespace Trio.SharedLibrary
                     }
                     nextParam = true;
 
-                    if (MatchSymbol(ref token, "...", false))
+                    // get param name
+                    var param = MatchIdent(ref token, true);
+                    if (param == "...")
                     {
                         hasEllipsis = true;
                         continue;
                     }
 
-                    // get param name
-                    var param = MatchIdent(ref token, true);
                     @params.Add(param);
                 }
 
