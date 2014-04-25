@@ -2154,8 +2154,18 @@ namespace Trio.SharedLibrary
                 // add functions defined in the script to the context
                 foreach (var func in _funcs)
                     innerContext.AddFunc(func, func.StartToken);
-                // execute the script
-                _stmt.Execute(innerContext);
+                try
+                {
+                    // execute the script
+                    _stmt.Execute(innerContext);
+                }
+                catch (BreakOrContinueException ex)
+                {
+                    throw ExecutionExceptionWithToken(ex.Token, ex.Break ? _errBreakWithoutSurroundingForOrWhile : _errContinueWithoutSurroundingForOrWhile);
+                }
+                catch (ReturnException)
+                {
+                }
             }
             // Parse script from tokens
             static Script Parse(Token token)
