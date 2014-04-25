@@ -44,7 +44,7 @@ namespace Trio.SharedLibrary
         }
 
         // reg-ex of the script language
-        static Regex regTokens = new Regex(@"(?'cmnt'//.+$)|" + // single line comment
+        static Regex regTokens = new Regex(@"(?'cmnt'//.*$)|" + // single line comment
                                            @"(?'ws'\s+)|" + // white space
                                            @"""(?'str'(?:\\""|[^""])*)""|" + // string literal
                                            @"(?i:0x(?'hex'[\da-f]+))|" + // hexadecimal literal
@@ -53,7 +53,7 @@ namespace Trio.SharedLibrary
                                            @"\b(?'bool'true|false)\b|" + // boolean literal
                                            @"\b(?'kwd'func|var|foreach|for|in|if|else|while|return|break|continue)\b|" + // keyword
                                            @"\b(?'id'[a-zA-Z_][a-zA-Z_\d]*)\b|" + // identifier
-                                           @"(?'sym'\.\.\.|[-+*/%&^|<>!=]=|&&|\|\||<<|>>|[-+~/*%&^|?:=(){}[\];,<>])|" + // symbol
+                                           @"(?'sym'\.\.\.|[<>!=]=|&&|\|\||<<|>>|[-+~!/*%&^|?:=(){}[\];,<>])|" + // symbol (-+*/%&^| - these symbols are not yet supported as assignments)
                                            @"(?'other'.)", RegexOptions.Compiled); // anything else -  not recognized
 
         static Token Tokenize(string text, string scriptName)
@@ -915,14 +915,16 @@ namespace Trio.SharedLibrary
                 return list;
 
             // check for (
-            MatchSymbol(ref token, "(", true);
+            if (MatchSymbol(ref token, "(", false))
+            {
+                // check for expression in quotes
+                var expr = MatchExpr(ref token, true);
 
-            // check for expression in quotes
-            var expr = MatchExpr(ref token, true);
+                MatchSymbol(ref token, ")", true);
+                return expr;
+            }
 
-            MatchSymbol(ref token, ")", true);
-
-            return expr;
+            return null;
         }
 
         private static Expr MatchExpr(ref Token token, bool insist)
@@ -1599,7 +1601,7 @@ namespace Trio.SharedLibrary
                 var stmtThen = MatchStmt(ref token, true);
 
                 Stmt stmtElse = null;
-                if (MatchKeyword(ref token, "else"))
+                if (token != null && MatchKeyword(ref token, "else"))
                 {
 
                     // match statement
