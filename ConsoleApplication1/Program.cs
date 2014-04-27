@@ -9,6 +9,7 @@ using System.Runtime.Serialization;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Trio.SharedLibrary;
 
 namespace ConsoleApplication1
 {
@@ -16,24 +17,18 @@ namespace ConsoleApplication1
     {
         class Func_Print : ScriptEngine.Func
         {
-            class Stmt_Print : ScriptEngine.Stmt
-            {
-                public Stmt_Print(ScriptEngine.Token startToken)
-                    : base(startToken)
-                {
-                }
-                public override void Execute(ScriptEngine.Context context)
-                {
-                    var a = context.GetVariable("_param", false);
-                    Debug.Assert(a != null);
-                    Console.Write(a.Value.ToString());
-                }
-            }
-
             public Func_Print()
-                : base(null, "print", new Stmt_Print(null))
+                : base("print", false)
             {
                 Params.Add("_param");
+            }
+
+            public override ScriptEngine.Value Execute(ScriptEngine.Context context)
+            {
+                var a = context.GetVariable("_param", false);
+                Debug.Assert(a != null);
+                Console.Write(a.Value.ToString());
+                return null;
             }
         }
         static void Main(string[] args)
@@ -41,9 +36,8 @@ namespace ConsoleApplication1
             try
             {
                 string[] lines = File.ReadAllLines("example1.txt");
-                var token = ScriptEngine.Tokenize(lines);
-                var script = ScriptEngine.ParseScript(token);
-                var context = new ScriptEngine.Context(script);
+                var script = ScriptEngine.Script.Parse(lines, null);
+                var context = new ScriptEngine.Context(null);
                 var printFunc = new Func_Print();
                 context.AddFunc(printFunc);
                 script.Execute(context);
