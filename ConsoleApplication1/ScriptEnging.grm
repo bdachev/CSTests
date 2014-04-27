@@ -76,7 +76,7 @@ lvalue ::= ident [ '[' <expr> ']' ]
 		 | <assign> ';'
 		 | <func_call> ';'
 		 | return [ <expr> ] ';'
-		 | for '(' <expr> ';' <expr> ';' <expr> ')' <stmt>
+		 | for '(' [ var ident = ] <expr> ';' <expr> ';' <expr> ')' <stmt>
 		 | foreach '(' var ident in <expr> ')' <stmt>
 		 | if '(' <expr> ')' <stmt> [ else <stmt> ]
 		 | while '(' <expr> ')' <stmt>

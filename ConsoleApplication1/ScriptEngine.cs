@@ -7,12 +7,15 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
-namespace ConsoleApplication1
+namespace Trio.SharedLibrary
 {
-    class ScriptEngine
+    /// <summary>
+    /// Script engine
+    /// </summary>
+    public class ScriptEngine
     {
         #region tokens
-        public enum TokenType
+        enum TokenType
         {
             String,
             Double,
@@ -24,14 +27,13 @@ namespace ConsoleApplication1
             Symbol
         }
 
-        public class Token
+        class Token
         {
             public TokenType Type;
             public readonly int Line;
             public readonly int Column;
             public readonly string Value;
             public Token Next;
-
             public Token(TokenType type, string value, int line, int column)
             {
                 Type = type;
@@ -41,6 +43,7 @@ namespace ConsoleApplication1
             }
         }
 
+        // reg-ex of the script language
         static Regex regTokens = new Regex(@"""(?'str'(?:[^""]|"""")*)""|" +
                                             @"(?i:0x(?'hex'[\da-f]+))|" +
                                             @"(?'double'(?:\d*\.)?\d+[eE][-+]?\d+|\d*\.\d+)|" +
@@ -50,7 +53,14 @@ namespace ConsoleApplication1
                                             @"(?'id'[\w_][\w\d_]*)|" +
                                             @"(?'sym'[-+*/%&^|<>!=]=|&&|\|\||<<|>>|[-+~/*%&^|?:=(){}[\];,<>])", RegexOptions.Compiled);
 
-        public static Token Tokenize(string[] lines)
+        static char[] _CRorNL = new char[] { '\n', '\r' };
+        static Token Tokenize(string text)
+        {
+            var lines = text.Split(_CRorNL, StringSplitOptions.RemoveEmptyEntries);
+            return Tokenize(lines);
+        }
+
+        static Token Tokenize(string[] lines)
         {
             Token first = null;
             Token last = null;
@@ -99,20 +109,46 @@ namespace ConsoleApplication1
         #endregion tokens
 
         #region errors
+        /// <summary>
+        /// Exception thrown during parsing phase
+        /// </summary>
         public class ParserException : ApplicationException
         {
-            public ParserException(Token token, string message) :
-                base(token == null ? message : string.Format("({0},{1}): {2}", token.Line + 1, token.Column + 1, message)) { }
+            /// <summary>
+            /// Constructor
+            /// </summary>
+            public ParserException(string message) : base(message) { }
         }
+        static ParserException ParserExceptionWithToken(Token token, string message)
+        {
+            return new ParserException(token == null ? message : string.Format("({0},{1}): {2}", token.Line + 1, token.Column + 1, message));
+        }
+        /// <summary>
+        /// Exception thrown during execution phase
+        /// </summary>
         public class ExecutionException : ApplicationException
         {
-            public ExecutionException(Token token, string message) :
-                base(token == null ? message : string.Format("({0},{1}): {2}", token.Line + 1, token.Column + 1, message)) { }
+            /// <summary>
+            /// Constructor
+            /// </summary>
+            public ExecutionException(string message) : base(message) { }
         }
-
+        static void ThrowExecutionException(Token token, string message)
+        {
+            throw new ExecutionException(token == null ? message : string.Format("({0},{1}): {2}", token.Line + 1, token.Column + 1, message));
+        }
+        /// <summary>
+        /// Exception thrown by return statement used to escape from internal scope
+        /// </summary>
         public class ReturnException : ApplicationException
         {
+            /// <summary>
+            /// Optional returned value
+            /// </summary>
             public Value Value { get; private set; }
+            /// <summary>
+            /// Constructor
+            /// </summary>
             public ReturnException(Value value)
             {
                 Value = value;
@@ -131,18 +167,25 @@ namespace ConsoleApplication1
         const string _errfmtVariable_0_NotDefined = "variable {0} not defined";
         const string _errfmtVariable_0_NotCollection = "variable {0} not collection";
         const string _errExpressionNotCollection = "expression is not collection";
-        const string _errfmtFailedToApply_0_operator = "failed to apply {0} operator";
+        const string _errfmtFailedToApply_0_operator_1 = "failed to apply {0} operator - {1}";
         const string _errIndexExpressionIsNotInteger = "index expression is not an integer";
         const string _errfmtIndexOutOfRange = "index {0} out of range";
         const string _errBooleanValueExpected = "boolean value expected";
         const string _errfmtFunction_0_NotDefined = "function {0} not defined";
         const string _errParametersMismatch = "parameters mismatch";
         const string _errFunctionShouldReturnValue = "function should return value";
+        const string _errExpressionIsNotBoolean = "expression is not boolean";
+        const string _errLeftOperandIsNotBoolean = "left operand is not boolean";
+        const string _errRightOperandIsNotBoolean = "right operand is not boolean";
+        const string _errInnerValueIsNotBoolean = "inner value is not boolean";
+        const string _errInnerValueIsNotNumber = "inner value is not number";
+        const string _errInnerValueIsNotInteger = "inner value is not integer";
+        const string _errDefinedForCombinationOfInputValues = "not defined for combination of input values";
         #endregion errors
 
         #region expressions
 
-        public abstract class Expr : Stmt
+        abstract class Expr : Stmt
         {
             public Expr(Token startToken) : base(startToken) { }
 
@@ -151,6 +194,15 @@ namespace ConsoleApplication1
                 Calculate(context);
             }
             public abstract Value Calculate(Context context);
+
+            public bool CheckCondition(Context context)
+            {
+                var cond = Calculate(context) as ValueBool;
+                if (cond == null)
+                    ThrowExecutionException(StartToken, _errExpressionIsNotBoolean);
+
+                return cond.V;
+            }
         }
 
         #region unary and binary operators
@@ -162,10 +214,10 @@ namespace ConsoleApplication1
             public string OpName { get; private set; }
             public BaseOp(string opName) { OpName = opName; }
 
-            protected Value CheckValueNotNull(Value value)
+            protected Value CheckValueNotNull(Value value, string errorMessage)
             {
                 if (value == null)
-                    throw new ExecutionException(StartToken, string.Format(_errfmtFailedToApply_0_operator, OpName));
+                    ThrowExecutionException(StartToken, string.Format(_errfmtFailedToApply_0_operator_1, OpName, errorMessage));
                 return value;
             }
         }
@@ -214,9 +266,13 @@ namespace ConsoleApplication1
 
             public override Value Apply(Context context, Expr Left, Expr Right)
             {
-                if (Left.Calculate(context).AsBool)
+                var left = Left.Calculate(context) as ValueBool;
+                CheckValueNotNull(left, _errLeftOperandIsNotBoolean);
+                if (left.V)
                 {
-                    return ValueBool.Box(Right.Calculate(context).AsBool);
+                    var right = Right.Calculate(context) as ValueBool;
+                    CheckValueNotNull(right, _errRightOperandIsNotBoolean);
+                    return right;
                 }
                 else
                 {
@@ -230,13 +286,17 @@ namespace ConsoleApplication1
             public BinOpLogOr() : base("||") { }
             public override Value Apply(Context context, Expr Left, Expr Right)
             {
-                if (Left.Calculate(context).AsBool)
+                var left = Left.Calculate(context) as ValueBool;
+                CheckValueNotNull(left, _errLeftOperandIsNotBoolean);
+                if (left.V)
                 {
                     return ValueBool.True;
                 }
                 else
                 {
-                    return ValueBool.Box(Right.Calculate(context).AsBool);
+                    var right = Right.Calculate(context) as ValueBool;
+                    CheckValueNotNull(right, _errRightOperandIsNotBoolean);
+                    return right;
                 }
             }
         }
@@ -255,7 +315,10 @@ namespace ConsoleApplication1
             public UnOpLogNeg() : base("!") { }
             public override Value Apply(Value innerValue)
             {
-                return ValueBool.Box(!innerValue.AsBool);
+                var valueBool = innerValue as ValueBool;
+                if (valueBool != null)
+                    return ValueBool.Box(!valueBool.V);
+                return CheckValueNotNull(null, _errInnerValueIsNotBoolean);
             }
         }
 
@@ -270,7 +333,7 @@ namespace ConsoleApplication1
                 var valueDouble = innerValue as ValueDouble;
                 if (valueDouble != null)
                     return new ValueDouble(-valueDouble.V);
-                return CheckValueNotNull(null);
+                return CheckValueNotNull(null, _errInnerValueIsNotNumber);
             }
         }
 
@@ -282,7 +345,7 @@ namespace ConsoleApplication1
                 var valueInt = innerValue as ValueInt;
                 if (valueInt != null)
                     return new ValueInt(~valueInt.V);
-                return CheckValueNotNull(null);
+                return CheckValueNotNull(null, _errInnerValueIsNotInteger);
             }
         }
 
@@ -310,7 +373,7 @@ namespace ConsoleApplication1
                     {
                         var expr = Match(ref token);
                         if (expr == null)
-                            throw new ParserException(token, _errSubExpressionExpected);
+                            throw ParserExceptionWithToken(token, _errSubExpressionExpected);
 
                         var opCopy = op.Clone();
                         opCopy.StartToken = startToken;
@@ -352,7 +415,7 @@ namespace ConsoleApplication1
                         {
                             var right = Next.Match(ref token);
                             if (right == null)
-                                throw new ParserException(token, _errSubExpressionExpected);
+                                throw ParserExceptionWithToken(token, _errSubExpressionExpected);
 
                             var opCopy = op.Clone();
                             opCopy.StartToken = symbolToken;
@@ -477,7 +540,7 @@ namespace ConsoleApplication1
             {
                 var var = context.GetVariable(Name, true);
                 if (var == null)
-                    throw new ExecutionException(StartToken, string.Format(_errfmtVariable_0_NotDefined, Name));
+                    ThrowExecutionException(StartToken, string.Format(_errfmtVariable_0_NotDefined, Name));
 
                 return var;
             }
@@ -511,19 +574,19 @@ namespace ConsoleApplication1
                 // get list var
                 var var = context.GetVariable(Name, true);
                 if (var == null)
-                    throw new ExecutionException(StartToken, string.Format(_errfmtVariable_0_NotDefined, Name));
+                    ThrowExecutionException(StartToken, string.Format(_errfmtVariable_0_NotDefined, Name));
                 var valueList = var.Value as ValueList;
                 if (valueList == null)
-                    throw new ExecutionException(StartToken, string.Format(_errfmtVariable_0_NotCollection, Name));
+                    ThrowExecutionException(StartToken, string.Format(_errfmtVariable_0_NotCollection, Name));
                 var list = valueList.V;
 
                 // calculate index
                 var valueIndex = ExprIndex.Calculate(context) as ValueInt;
                 if (valueIndex == null)
-                    throw new ExecutionException(StartToken, _errIndexExpressionIsNotInteger);
+                    ThrowExecutionException(StartToken, _errIndexExpressionIsNotInteger);
                 int index = valueIndex.V;
                 if (index < 0 || index >= list.Count)
-                    throw new ExecutionException(StartToken, string.Format(_errfmtIndexOutOfRange, index));
+                    ThrowExecutionException(StartToken, string.Format(_errfmtIndexOutOfRange, index));
 
                 return Tuple.Create(list, index);
             }
@@ -633,8 +696,7 @@ namespace ConsoleApplication1
             }
             public override Value Calculate(Context context)
             {
-                var cond = Cond.Calculate(context);
-                if (cond.AsBool)
+                if (Cond.CheckCondition(context))
                 {
                     return ExprTrue.Calculate(context);
                 }
@@ -776,7 +838,7 @@ namespace ConsoleApplication1
             var expr = (Expr)Expr_Assign.Match(ref token) ??
                         Expr_Cond.Match(ref token);
             if (insist && expr == null)
-                throw new ParserException(token, _errExpressionExpected);
+                throw ParserExceptionWithToken(token, _errExpressionExpected);
             return expr;
         }
         #endregion expressions
@@ -792,7 +854,7 @@ namespace ConsoleApplication1
                             TryApplyBinOpForString(startToken, binOp, value1, value2) ??
                             TryApplyBinOpForBool(startToken, binOp, value1, value2);
                 if (value == null)
-                    throw new ExecutionException(startToken, string.Format(_errfmtFailedToApply_0_operator, binOp.OpName));
+                    ThrowExecutionException(startToken, string.Format(_errfmtFailedToApply_0_operator_1, binOp.OpName, _errDefinedForCombinationOfInputValues));
                 return value;
             }
 
@@ -800,10 +862,10 @@ namespace ConsoleApplication1
             {
                 if (binOp.OpBool == null)
                     return null;
-                bool b1 = value1.AsBool;
-                bool b2 = value2.AsBool;
+                var b1 = value1 as ValueBool;
+                var b2 = value2 as ValueBool;
 
-                return ValueBool.Box(binOp.OpBool(b1, b2));
+                return ValueBool.Box(binOp.OpBool(b1.V, b2.V));
             }
 
             public static Value TryApplyBinOpForInt(Token startToken, BinOpDelegates binOp, Value value1, Value value2)
@@ -873,23 +935,46 @@ namespace ConsoleApplication1
             }
         }
 
+        /// <summary>
+        /// Base class for script values
+        /// </summary>
         public abstract class Value : IEquatable<Value>
         {
-            public abstract bool AsBool { get; }
-
+            /// <summary>
+            /// Equality check for IEquatable{Value}
+            /// </summary>
+            /// <param name="other"></param>
+            /// <returns></returns>
             public abstract bool Equals(Value other);
         }
 
+        /// <summary>
+        /// Generic base class for simple values
+        /// </summary>
+        /// <typeparam name="T">Actual type of the value</typeparam>
         public abstract class Value<T> : Value
         {
+            /// <summary>
+            /// Reference to the actual value
+            /// </summary>
             public T V { get; private set; }
+            /// <summary>
+            /// Constructor
+            /// </summary>
             public Value(T value) { V = value; }
-
+            /// <summary>
+            /// Override GetHashCode() to return value's hash
+            /// </summary>
+            /// <returns></returns>
             public override int GetHashCode()
             {
                 return V.GetHashCode();
             }
-
+            /// <summary>
+            /// Override equality check to check by value
+            /// </summary>
+            /// <param name="obj"></param>
+            /// <returns></returns>
             public override bool Equals(object obj)
             {
                 if (ReferenceEquals(this, obj))
@@ -901,63 +986,98 @@ namespace ConsoleApplication1
 
                 return Equals(other);
             }
-
+            /// <summary>
+            /// Equality check for IEquatable{Value}
+            /// </summary>
             public override bool Equals(Value other)
             {
                 var otherT = other as Value<T>;
                 return otherT != null && V.Equals(otherT.V);
             }
-
+            /// <summary>
+            /// ToString returns value
+            /// </summary>
             public override string ToString()
             {
                 return V.ToString();
             }
         }
-
+        /// <summary>
+        /// Class for boolean value
+        /// </summary>
         public class ValueBool : Value<bool>
         {
+            /// <summary>
+            /// Predefined constant for true
+            /// </summary>
             public readonly static ValueBool True = new ValueBool(true);
+            /// <summary>
+            /// Predefined constant for false
+            /// </summary>
             public readonly static ValueBool False = new ValueBool(false);
-
+            /// <summary>
+            /// Boxing method
+            /// </summary>
             public static ValueBool Box(bool value) { return value ? True : False; }
-
+            /// <summary>
+            /// Construcor
+            /// </summary>
+            /// <param name="value"></param>
             public ValueBool(bool value) : base(value) { }
-
-            public override bool AsBool { get { return V; } }
         }
-
+        /// <summary>
+        /// Class for integer value
+        /// </summary>
         public class ValueInt : Value<int>
         {
+            /// <summary>
+            /// Constructor
+            /// </summary>
             public ValueInt(int value) : base(value) { }
-            public override bool AsBool { get { return V != 0; } }
         }
-
+        /// <summary>
+        /// Class for double value
+        /// </summary>
         public class ValueDouble : Value<double>
         {
+            /// <summary>
+            /// Constructor
+            /// </summary>
             public ValueDouble(double value) : base(value) { }
-
-            public override bool AsBool { get { return V != 0; } }
         }
-
+        /// <summary>
+        /// Class for string value
+        /// </summary>
         public class ValueString : Value<string>
         {
+            /// <summary>
+            /// Constructor
+            /// </summary>
             public ValueString(string value) : base(value) { }
-
-            public override bool AsBool { get { return !string.IsNullOrEmpty(V); } }
         }
-
+        /// <summary>
+        /// Class for list of values
+        /// </summary>
         public class ValueList : Value<List<Value>>
         {
+            /// <summary>
+            /// Constructor
+            /// </summary>
             public ValueList(List<Value> value) : base(value) { }
-
-            public override bool AsBool { get { return V.Any(); } }
-
+            /// <summary>
+            /// Equality check if made over the sequence of values
+            /// </summary>
+            /// <param name="other"></param>
+            /// <returns></returns>
             public override bool Equals(Value other)
             {
                 var otherT = other as ValueList;
                 return otherT != null && V.SequenceEqual(otherT.V);
             }
-
+            /// <summary>
+            /// ToString overriden to dump comma separated values
+            /// </summary>
+            /// <returns></returns>
             public override string ToString()
             {
                 var sb = new StringBuilder();
@@ -975,72 +1095,103 @@ namespace ConsoleApplication1
             }
         }
         #endregion // value
-
+        /// <summary>
+        /// Variable holding a value
+        /// </summary>
         [DebuggerDisplay("{Name} = {Value}")]
         public class Variable
         {
+            /// <summary>
+            /// Name of the variable
+            /// </summary>
             public string Name { get; private set; }
-
+            /// <summary>
+            /// Current value of the variable
+            /// </summary>
             public Value Value { get; set; }
-
+            /// <summary>
+            /// Constructor
+            /// </summary>
             public Variable(string name)
             {
                 Name = name;
             }
         }
 
+        /// <summary>
+        /// Execution context for the script
+        /// </summary>
         public class Context
         {
+            /// <summary>
+            /// Parent execution context for inner scopes
+            /// </summary>
             public Context Parent { get; private set; }
             List<Variable> _variables = new List<Variable>();
             List<Func> _funcs = new List<Func>();
-
+            /// <summary>
+            /// Constructor
+            /// </summary>
+            /// <param name="parent"></param>
             public Context(Context parent)
             {
-                Debug.Assert(parent != null);
                 Parent = parent;
             }
-
-            public Context(Script script)
-            {
-                Parent = null;
-            }
-
+            /// <summary>
+            /// Get Variable from the context
+            /// </summary>
+            /// <param name="name">Variable name</param>
+            /// <param name="searchParents">True to search in parent contexts as well</param>
+            /// <returns>Reference to variable if found or null</returns>
             public Variable GetVariable(string name, bool searchParents)
             {
                 return _variables.FirstOrDefault(v => string.Equals(v.Name, name, StringComparison.OrdinalIgnoreCase)) ??
                         (searchParents && Parent != null ? Parent.GetVariable(name, true) : null);
             }
-
-            public Variable AddVariable(Token token, string name)
+            /// <summary>
+            /// Add new variable to the context
+            /// </summary>
+            /// <param name="name">Name of the variable</param>
+            /// <param name="token">Optional token to be associated with the addition</param>
+            /// <returns>Reference to newly added variable</returns>
+            public Variable AddVariable(string name, object token = null)
             {
                 var var = GetVariable(name, false);
                 if (var != null)
-                    throw new ExecutionException(token, string.Format(_errfmtVariable_0_AlreadyDefined, name));
+                    ThrowExecutionException(token as Token, string.Format(_errfmtVariable_0_AlreadyDefined, name));
 
                 var = new Variable(name);
                 _variables.Add(var);
                 return var;
             }
-
+            /// <summary>
+            /// Get function from the context
+            /// </summary>
+            /// <param name="name">Name of the function</param>
+            /// <param name="searchParents">True to search parents as well</param>
+            /// <returns>Reference to function definition</returns>
             public Func GetFunc(string name, bool searchParents)
             {
                 return _funcs.FirstOrDefault(f => string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase)) ??
                         (searchParents && Parent != null ? Parent.GetFunc(name, true) : null);
             }
-
-            public void AddFunc(Func func)
+            /// <summary>
+            /// Add function to the context
+            /// </summary>
+            /// <param name="func"></param>
+            /// <param name="token">Optional token to be associated with the addition</param>
+            public void AddFunc(Func func, object token = null)
             {
                 var var = GetFunc(func.Name, false);
                 if (var != null)
-                    throw new ExecutionException(func.StartToken, string.Format(_errfmtFunction_0_AlreadyDefined, func.Name));
+                    ThrowExecutionException(token as Token, string.Format(_errfmtFunction_0_AlreadyDefined, func.Name));
 
                 _funcs.Add(func);
             }
         }
 
         #region statements
-        public abstract class Stmt
+        abstract class Stmt
         {
             public Token StartToken { get; private set; }
             public abstract void Execute(Context context);
@@ -1064,7 +1215,7 @@ namespace ConsoleApplication1
                        Stmt_Block.Match(ref token, false) ??
                        (Stmt)Stmt_Return.Match(ref token);
             if (insist && stmt == null)
-                throw new ParserException(token, _errStatementExpected);
+                throw ParserExceptionWithToken(token, _errStatementExpected);
             return stmt;
         }
 
@@ -1106,7 +1257,7 @@ namespace ConsoleApplication1
 
             public override void Execute(Context context)
             {
-                var var = context.AddVariable(StartToken, VarName);
+                var var = context.AddVariable(VarName, StartToken);
                 if (Expr != null)
                     var.Value = Expr.Calculate(context);
             }
@@ -1172,17 +1323,19 @@ namespace ConsoleApplication1
 
         class Stmt_For : Stmt
         {
-            public Expr Expr1 { get; private set; }
-            public Expr Expr2 { get; private set; }
-            public Expr Expr3 { get; private set; }
-            public Stmt Stmt { get; private set; }
+            string _varName;
+            Expr _expr1;
+            Expr _expr2;
+            Expr _expr3;
+            Stmt Stmt;
 
-            public Stmt_For(Token startToken, Expr expr1, Expr expr2, Expr expr3, Stmt stmt)
+            public Stmt_For(Token startToken, string varName, Expr expr1, Expr expr2, Expr expr3, Stmt stmt)
                 : base(startToken)
             {
-                Expr1 = expr1;
-                Expr2 = expr2;
-                Expr3 = expr3;
+                _varName = varName;
+                _expr1 = expr1;
+                _expr2 = expr2;
+                _expr3 = expr3;
                 Stmt = stmt;
             }
 
@@ -1194,6 +1347,17 @@ namespace ConsoleApplication1
 
                 // match (
                 MatchSymbol(ref token, "(", true);
+
+                string varName = null;
+                // check for local definition 
+                if (MatchKeyword(ref token, "var"))
+                {
+                    // match var name
+                    varName = MatchIdent(ref token, true);
+
+                    // match =
+                    MatchSymbol(ref token, "=", true);
+                }
 
                 // match 1st expr
                 var expr1 = MatchExpr(ref token, true);
@@ -1216,13 +1380,20 @@ namespace ConsoleApplication1
                 // match statement
                 var stmt = MatchStmt(ref token, true);
 
-                return new Stmt_For(startToken, expr1, expr2, expr3, stmt);
+                return new Stmt_For(startToken, varName, expr1, expr2, expr3, stmt);
             }
 
             public override void Execute(Context context)
             {
-                for (Expr1.Calculate(context); Expr2.Calculate(context).AsBool; Expr3.Calculate(context))
-                    Stmt.Execute(context);
+                var innerContext = new Context(context);
+                var value = _expr1.Calculate(innerContext);
+                if (_varName != null)
+                {
+                    var var = innerContext.AddVariable(_varName, StartToken);
+                    var.Value = value;
+                }
+                for (; _expr2.CheckCondition(innerContext); _expr3.Calculate(innerContext))
+                    Stmt.Execute(innerContext);
             }
         }
 
@@ -1274,9 +1445,9 @@ namespace ConsoleApplication1
             {
                 var valueList = ExprColl.Calculate(context) as ValueList;
                 if (valueList == null)
-                    throw new ExecutionException(ExprColl.StartToken, _errExpressionNotCollection);
+                    ThrowExecutionException(ExprColl.StartToken, _errExpressionNotCollection);
                 var innerContext = new Context(context);
-                var var = innerContext.AddVariable(StartToken, VarName);
+                var var = innerContext.AddVariable(VarName, StartToken);
                 foreach (var value in valueList.V)
                 {
                     var.Value = value;
@@ -1329,14 +1500,15 @@ namespace ConsoleApplication1
 
             public override void Execute(Context context)
             {
-                if (Expr.Calculate(context).AsBool)
+                var innerContext = new Context(context);
+                if (Expr.CheckCondition(innerContext))
                 {
-                    StmtThen.Execute(context);
+                    StmtThen.Execute(innerContext);
                 }
                 else
                 {
                     if (StmtElse != null)
-                        StmtElse.Execute(context);
+                        StmtElse.Execute(innerContext);
                 }
             }
         }
@@ -1376,9 +1548,10 @@ namespace ConsoleApplication1
 
             public override void Execute(Context context)
             {
-                while (Expr.Calculate(context).AsBool)
+                var innerContext = new Context(context);
+                while (Expr.CheckCondition(innerContext))
                 {
-                    Stmt.Execute(context);
+                    Stmt.Execute(innerContext);
                 }
             }
         }
@@ -1415,7 +1588,7 @@ namespace ConsoleApplication1
             }
         }
 
-        public class Stmt_Block : Stmt
+        class Stmt_Block : Stmt
         {
             public readonly List<Stmt> Stmts = new List<Stmt>();
 
@@ -1516,25 +1689,25 @@ namespace ConsoleApplication1
             {
                 var func = context.GetFunc(FuncName, true);
                 if (func == null)
-                    throw new ExecutionException(StartToken, string.Format(_errfmtFunction_0_NotDefined, FuncName));
+                    ThrowExecutionException(StartToken, string.Format(_errfmtFunction_0_NotDefined, FuncName));
 
                 if (func.Params.Count != ParamValues.Count)
-                    throw new ExecutionException(StartToken, _errParametersMismatch);
+                    ThrowExecutionException(StartToken, _errParametersMismatch);
 
                 // calculate parameters
                 var innerContext = new Context(context);
                 for (int i = 0; i < ParamValues.Count; i++)
                 {
-                    var var = innerContext.AddVariable(StartToken, func.Params[i]);
+                    var var = innerContext.AddVariable(func.Params[i], StartToken);
                     var.Value = ParamValues[i].Calculate(context);
                 }
 
                 try
                 {
-                    func.Block.Execute(innerContext);
+                    func.Execute(innerContext);
 
                     if (insistResult)
-                        throw new ExecutionException(StartToken, _errFunctionShouldReturnValue);
+                        ThrowExecutionException(StartToken, _errFunctionShouldReturnValue);
 
                     return null;
                 }
@@ -1542,7 +1715,7 @@ namespace ConsoleApplication1
                 {
                     var value = ex.Value;
                     if (insistResult && value == null)
-                        throw new ExecutionException(StartToken, _errFunctionShouldReturnValue);
+                        ThrowExecutionException(StartToken, _errFunctionShouldReturnValue);
                     return value;
                 }
             }
@@ -1553,7 +1726,7 @@ namespace ConsoleApplication1
         private static string MatchIdent(ref Token token, bool insist)
         {
             if (token == null)
-                throw new ParserException(null, _errUnexpectedEndOfFile);
+                throw new ParserException(_errUnexpectedEndOfFile);
             if (token.Type == TokenType.Identifier)
             {
                 var value = token.Value;
@@ -1561,7 +1734,7 @@ namespace ConsoleApplication1
                 return value;
             }
             if (insist)
-                throw new ParserException(token, _errIdentifierExpected);
+                throw ParserExceptionWithToken(token, _errIdentifierExpected);
             else
                 return null;
         }
@@ -1569,7 +1742,7 @@ namespace ConsoleApplication1
         private static bool MatchSymbol(ref Token token, string symbol, bool insist)
         {
             if (token == null)
-                throw new ParserException(null, _errUnexpectedEndOfFile);
+                throw new ParserException(_errUnexpectedEndOfFile);
             if (token.Type == TokenType.Symbol && token.Value == symbol)
             {
                 token = token.Next;
@@ -1577,7 +1750,7 @@ namespace ConsoleApplication1
             }
 
             if (insist)
-                throw new ParserException(token, string.Format(_errfmt_0_Expected, symbol));
+                throw ParserExceptionWithToken(token, string.Format(_errfmt_0_Expected, symbol));
             else
                 return false;
         }
@@ -1585,7 +1758,7 @@ namespace ConsoleApplication1
         private static bool MatchKeyword(ref Token token, string keyword)
         {
             if (token == null)
-                throw new ParserException(null, _errUnexpectedEndOfFile);
+                throw new ParserException(_errUnexpectedEndOfFile);
             if (token.Type == TokenType.Keyword && token.Value == keyword)
             {
                 token = token.Next;
@@ -1598,22 +1771,48 @@ namespace ConsoleApplication1
         }
         #endregion primitives
 
-        public class Func
+        /// <summary>
+        /// Base class for functions
+        /// </summary>
+        public abstract class Func
         {
-            public Token StartToken { get; private set; }
+            /// <summary>
+            /// Name of the function
+            /// </summary>
             public string Name { get; private set; }
+            /// <summary>
+            /// List of parameter names
+            /// </summary>
             public List<string> Params { get; private set; }
-            public Stmt Block { get; private set; }
-
-            public Func(Token startToken, string name, Stmt block)
+            /// <summary>
+            /// Constructor
+            /// </summary>
+            public Func(string name)
             {
-                StartToken = startToken;
                 Name = name;
-                Block = block;
                 Params = new List<string>();
             }
 
-            public static Func Match(ref Token token)
+            /// <summary>
+            /// Abstract method called when executing the function
+            /// </summary>
+            public abstract void Execute(Context context);
+        }
+
+        class Func_With_Block : Func
+        {
+            public Token StartToken { get; private set; }
+
+            public Stmt Block { get; private set; }
+
+            public Func_With_Block(Token startToken, string name, Stmt block)
+                : base(name)
+            {
+                StartToken = startToken;
+                Block = block;
+            }
+
+            public static Func_With_Block Match(ref Token token)
             {
                 var startToken = token;
                 // should start with sub
@@ -1647,51 +1846,75 @@ namespace ConsoleApplication1
 
                 // block should follow
                 var block = Stmt_Block.Match(ref token, true);
-                var func = new Func(startToken, name, block);
+                var func = new Func_With_Block(startToken, name, block);
                 func.Params.AddRange(@params);
                 return func;
-            }
-        }
-
-        public class Script : Stmt_Block
-        {
-            public List<Func> Funcs { get; private set; }
-
-            public Script()
-                : base(null)
-            {
-                Funcs = new List<Func>();
             }
 
             public override void Execute(Context context)
             {
-                var innerContext = new Context(context);
-                foreach (var func in Funcs)
-                    innerContext.AddFunc(func);
-                base.Execute(innerContext);
+                Block.Execute(context);
             }
         }
 
-        public static Script ParseScript(Token token)
+        /// <summary>
+        /// Instance of script
+        /// </summary>
+        public class Script
         {
-            var script = new Script();
-            while (token != null)
-            {
-                var stmt = MatchStmt(ref token, false);
-                if (stmt != null)
-                {
-                    script.Stmts.Add(stmt);
-                    continue;
-                }
-                var sub = Func.Match(ref token);
-                if (sub != null)
-                {
-                    script.Funcs.Add(sub);
-                    continue;
-                }
-            }
+            List<Func_With_Block> _funcs = new List<Func_With_Block>();
+            Stmt_Block _stmt = new Stmt_Block(null);
 
-            return script;
+            /// <summary>
+            /// Execution method
+            /// </summary>
+            /// <param name="context"></param>
+            public void Execute(Context context)
+            {
+                var innerContext = new Context(context);
+                foreach (var func in _funcs)
+                    innerContext.AddFunc(func, func.StartToken);
+
+                _stmt.Execute(innerContext);
+            }
+            // Parse script from tokens
+            static Script Parse(Token token)
+            {
+                var script = new Script();
+                while (token != null)
+                {
+                    var stmt = MatchStmt(ref token, false);
+                    if (stmt != null)
+                    {
+                        script._stmt.Stmts.Add(stmt);
+                        continue;
+                    }
+                    var func = Func_With_Block.Match(ref token);
+                    if (func != null)
+                    {
+                        script._funcs.Add(func);
+                        continue;
+                    }
+                }
+
+                return script;
+            }
+            /// <summary>
+            /// Parse script as single string
+            /// </summary>
+            public static Script Parse(string text)
+            {
+                var token = Tokenize(text);
+                return Parse(token);
+            }
+            /// <summary>
+            /// Parse script as array of lines
+            /// </summary>
+            public static Script Parse(string[] lines)
+            {
+                var token = Tokenize(lines);
+                return Parse(token);
+            }
         }
     }
 }
