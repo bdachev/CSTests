@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:s="clr-namespace:System;assembly=mscorlib"
         xmlns:l="clr-namespace:WpfApplication1"
-        Title="MainWindow" Height="350" Width="525"
+        Title="MainWindow" Height="500" Width="600"
         x:Name="mainWindow">
     <Window.Resources>
         <XmlDataProvider x:Key="data" XPath="Items">
@@ -36,6 +36,15 @@
                 </Items>
             </x:XData>
         </XmlDataProvider>
+        <XmlDataProvider x:Key="xmlComboBoxItems" XPath="Items">
+            <x:XData>
+                <Items xmlns="">
+                    <Item Text="a" />
+                    <Item Text="b" />
+                    <Item Text="c" />
+                </Items>
+            </x:XData>
+        </XmlDataProvider>
     </Window.Resources>
     <DockPanel>
         <Menu DockPanel.Dock="Top">
@@ -45,21 +54,59 @@
                 <Separator/>
                 <MenuItem Header="Exit"/>
             </MenuItem>
+            <MenuItem Header="RootNoEntries"/>
+            <MenuItem Header="RootWithEntries">
+                <MenuItem Header="ChildNoEntries"/>
+                <MenuItem Header="ChildWithEntries">
+                    <MenuItem Header="ChildNoEntries"/>
+                    <MenuItem Header="ChildNoEntriesDisabled" IsEnabled="False"/>
+                </MenuItem>
+            </MenuItem>
         </Menu>
         <ToolBarTray Orientation="Horizontal" DockPanel.Dock="Top">
             <ToolBar>
                 <Button>Btn1</Button>
                 <Button>Btn2</Button>
+                <l:UserControl1 x:Name="__UC1" Tag="Blah"/>
             </ToolBar>
         </ToolBarTray>
         <l:MyTreeView DockPanel.Dock="Top" ItemsSource="{Binding XPath=*, Source={StaticResource data}}"/>
+        <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding IconDecoder.Frames, ElementName=mainWindow}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border BorderBrush="Black" BorderThickness="1" SnapsToDevicePixels="True" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="3">
+                        <Image Source="{Binding}" Stretch="None"/>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+            <ItemsControl.Template>
+                <ControlTemplate>
+                    <StackPanel Orientation="Horizontal" IsItemsHost="True"/>
+                </ControlTemplate>
+            </ItemsControl.Template>
+        </ItemsControl>
+        <ItemsControl DockPanel.Dock="Top" ItemsSource="{x:Static l:MainWindow.SystemColors}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel Orientation="Horizontal" Margin="3">
+                        <Rectangle Fill="{Binding Brush}" Stroke="Black" Height="15" Width="30" VerticalAlignment="Center" SnapsToDevicePixels="True"/>
+                        <TextBlock Text="{Binding Name}" Margin="3,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+            <ItemsControl.Template>
+                <ControlTemplate TargetType="ItemsControl">
+                    <WrapPanel Orientation="Vertical" IsItemsHost="True"/>
+                </ControlTemplate>
+            </ItemsControl.Template>
+        </ItemsControl>
         <ComboBox DockPanel.Dock="Top" Text="text" IsEditable="False" IsReadOnly="True">
             <ComboBoxItem>a</ComboBoxItem>
             <ComboBoxItem>b</ComboBoxItem>
             <ComboBoxItem>c</ComboBoxItem>
             <ComboBoxItem>f</ComboBoxItem>
         </ComboBox>
-        <DataGrid DockPanel.Dock="Bottom" ItemsSource="{Binding XPath=*,Source={StaticResource xmlData}}" AutoGenerateColumns="False">
+        <DataGrid x:Name="dgData" DockPanel.Dock="Bottom" ItemsSource="{Binding XPath=*,Source={StaticResource xmlData}}" AutoGenerateColumns="False">
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Text" Binding="{Binding XPath=@Text}"/>
                 <DataGridTemplateColumn Header="Template">
@@ -70,7 +117,7 @@
                     </DataGridTemplateColumn.CellTemplate>
                     <DataGridTemplateColumn.CellEditingTemplate>
                         <DataTemplate>
-                            <ComboBox Text="{Binding XPath=@Text}" IsEditable="True" IsReadOnly="True">
+                            <ComboBox Text="{Binding XPath=@Text}" IsEditable="True" IsReadOnly="True" SelectionChanged="ComboBox_SelectionChanged">
                                 <ComboBoxItem>a</ComboBoxItem>
                                 <ComboBoxItem>b</ComboBoxItem>
                                 <ComboBoxItem>c</ComboBoxItem>
@@ -79,6 +126,7 @@
                         </DataTemplate>
                     </DataGridTemplateColumn.CellEditingTemplate>
                 </DataGridTemplateColumn>
+                <DataGridComboBoxColumn Header="ComboBox" TextBinding="{Binding XPath=@Text}" ItemsSource="{Binding XPath=*,Source={StaticResource xmlComboBoxItems}}" DisplayMemberPath="@Text"/>
             </DataGrid.Columns>
         </DataGrid>
 
