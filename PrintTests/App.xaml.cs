@@ -6,7 +6,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 
-namespace WpfApplication2
+namespace PrintTests
 {
     /// <summary>
     /// Interaction logic for App.xaml

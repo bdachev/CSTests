@@ -11,7 +11,7 @@ using System.Windows.Documents;
 using System.Windows.Interop;
 using System.Windows.Xps.Packaging;
 
-namespace WpfApplication2
+namespace PrintTests
 {
     /// <summary>
     /// Interaction logic for MainWindow.xaml
