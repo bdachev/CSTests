@@ -291,6 +291,8 @@ namespace PrintTests
             pDialog.PrintTicket = _ticket;
             if (pDialog.ShowDialog() == true)
             {
+                _queue = pDialog.PrintQueue;
+                _ticket = pDialog.PrintTicket;
                 FlowDocument flowDocumentCopy = GetFlowDocumentCopy();
                 using (var fixDoc = new FixedDocumentHelper(flowDocumentCopy))
                 {
@@ -301,13 +303,12 @@ namespace PrintTests
 
         private void Preview_Click(object sender, RoutedEventArgs e)
         {
-            var docview = new DocumentViewer();
-
+            var docview = new DocumentViewerEx();
             var wnd = new Window();
             wnd.Owner = this;
             wnd.Content = docview;
 
-            FlowDocument flowDocumentCopy = GetFlowDocumentCopy();
+            var flowDocumentCopy = GetFlowDocumentCopy();
             using (var fixDoc = new FixedDocumentHelper(flowDocumentCopy))
             {
                 docview.Document = fixDoc.FixedDocumentSequence;
@@ -329,8 +330,17 @@ namespace PrintTests
             }
             __flowDocViewer.Document = flowDocument;
 
-            flowDocumentCopy.PageWidth = _ticket.PageMediaSize.Width ?? 210 / 0.254 * 0.96;
-            flowDocumentCopy.PageHeight = _ticket.PageMediaSize.Height ?? 297 / 0.254 * 0.96;
+            bool isLandscape = _ticket.PageOrientation == PageOrientation.Landscape || _ticket.PageOrientation == PageOrientation.ReverseLandscape;
+            if (isLandscape)
+            {
+                flowDocumentCopy.PageHeight = _ticket.PageMediaSize.Width ?? 210 / 0.254 * 0.96;
+                flowDocumentCopy.ColumnWidth = flowDocumentCopy.PageWidth = _ticket.PageMediaSize.Height ?? 297 / 0.254 * 0.96;
+            }
+            else
+            {
+                flowDocumentCopy.ColumnWidth = flowDocumentCopy.PageWidth = _ticket.PageMediaSize.Width ?? 210 / 0.254 * 0.96;
+                flowDocumentCopy.PageHeight = _ticket.PageMediaSize.Height ?? 297 / 0.254 * 0.96;
+            }
             return flowDocumentCopy;
         }
 
@@ -379,5 +389,13 @@ namespace PrintTests
             }
         }
         #endregion // FixedDocumentHelper
+
+        class DocumentViewerEx : DocumentViewer
+        {
+            protected override void OnPrintCommand()
+            {
+                base.OnPrintCommand();
+            }
+        }
     }
 }
