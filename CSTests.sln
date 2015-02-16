@@ -1,13 +1,9 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2012
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MSBuildTest", "MSBuildTest\MSBuildTest.csproj", "{E8CA65AA-4B43-4364-A086-A795D8656C9B}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WpfApplication1", "WpfApplication1\WpfApplication1.csproj", "{88CDC566-E844-46A5-8CD6-B21B66D550CA}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConsoleApplication1", "ConsoleApplication1\ConsoleApplication1.csproj", "{9A5F4E23-8A53-430F-A206-3FD4C5D13750}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Test3D", "Test3D\Test3D.csproj", "{87778BE3-186D-438A-9CCB-C26A69731D8F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,10 +11,6 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{E8CA65AA-4B43-4364-A086-A795D8656C9B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{E8CA65AA-4B43-4364-A086-A795D8656C9B}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{E8CA65AA-4B43-4364-A086-A795D8656C9B}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{E8CA65AA-4B43-4364-A086-A795D8656C9B}.Release|Any CPU.Build.0 = Release|Any CPU
 		{88CDC566-E844-46A5-8CD6-B21B66D550CA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{88CDC566-E844-46A5-8CD6-B21B66D550CA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{88CDC566-E844-46A5-8CD6-B21B66D550CA}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -27,10 +19,6 @@ Global
 		{9A5F4E23-8A53-430F-A206-3FD4C5D13750}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9A5F4E23-8A53-430F-A206-3FD4C5D13750}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9A5F4E23-8A53-430F-A206-3FD4C5D13750}.Release|Any CPU.Build.0 = Release|Any CPU
-		{87778BE3-186D-438A-9CCB-C26A69731D8F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{87778BE3-186D-438A-9CCB-C26A69731D8F}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{87778BE3-186D-438A-9CCB-C26A69731D8F}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{87778BE3-186D-438A-9CCB-C26A69731D8F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
