@@ -33,7 +33,7 @@ namespace PrintTests
 
         #region Native PageSetupDlg related
         [Flags]
-        enum PSD_
+        enum PSD
         {
 
             DEFAULTMINMARGINS = 0x00000000,
@@ -201,15 +201,15 @@ namespace PrintTests
         }
         #endregion
 
-        #region PAGESETUPDLG_STRUCT
+        #region PAGESETUPDLG
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-        struct PAGESETUPDLG_STRUCT
+        struct PAGESETUPDLG
         {
             public int lStructSize;     // 00h
             public IntPtr hwndOwner;    // 08h
             public IntPtr hDevMode;     // 10h
             public IntPtr hDevNames;    // 18h
-            public PSD_ Flags;          // 20h
+            public PSD Flags;           // 20h
             public POINT ptPaperSize;   // 28h
             public RECT rtMinMargin;    // 30h
             public RECT rtMargin;       // 40h
@@ -223,7 +223,7 @@ namespace PrintTests
         #endregion
 
         [DllImport("comdlg32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-        static extern bool PageSetupDlgW(ref PAGESETUPDLG_STRUCT lppsd);
+        static extern bool PageSetupDlgW(ref PAGESETUPDLG lppsd);
         [DllImport("kernel32.dll")]
         static extern IntPtr GlobalLock(IntPtr hMem);
         [DllImport("kernel32.dll")]
@@ -252,12 +252,13 @@ namespace PrintTests
                     Marshal.Copy(dMode, 0, ptrDevMode, dMode.Length);
 
                     var wih = new WindowInteropHelper(this);
-                    var pss = new PAGESETUPDLG_STRUCT()
+                    var pss = new PAGESETUPDLG()
                     {
-                        lStructSize = Marshal.SizeOf(typeof(PAGESETUPDLG_STRUCT)),
+                        lStructSize = Marshal.SizeOf(typeof(PAGESETUPDLG)),
                         hDevMode = ptrDevMode,
                         hwndOwner = wih.Handle,
-                        Flags = PSD_.INTHOUSANDTHSOFINCHES,
+                        rtMargin = new RECT(500, 500, 500, 500),
+                        Flags = PSD.INTHOUSANDTHSOFINCHES|PSD.MARGINS,
                     };
                     if (PageSetupDlgW(ref pss))
                     {
@@ -287,6 +288,9 @@ namespace PrintTests
         private void Print_Click(object sender, RoutedEventArgs e)
         {
             var pDialog = new PrintDialog();
+            pDialog.UserPageRangeEnabled = true;
+            pDialog.PageRange = new PageRange(1);
+            pDialog.PageRangeSelection = PageRangeSelection.UserPages;
             pDialog.PrintQueue = _queue;
             pDialog.PrintTicket = _ticket;
             if (pDialog.ShowDialog() == true)
