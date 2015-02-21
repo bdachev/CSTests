@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Drawing.Printing;
 using System.IO;
 using System.IO.Packaging;
@@ -9,6 +10,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Interop;
+using System.Windows.Markup;
 using System.Windows.Xps.Packaging;
 
 namespace PrintTests
@@ -300,8 +302,53 @@ namespace PrintTests
                 FlowDocument flowDocumentCopy = GetFlowDocumentCopy();
                 using (var fixDoc = new FixedDocumentHelper(flowDocumentCopy))
                 {
-                    pDialog.PrintDocument(fixDoc.FixedDocumentSequence.DocumentPaginator, "Test print job");
+                    if (pDialog.PageRangeSelection == PageRangeSelection.AllPages)
+                    {
+                        pDialog.PrintDocument(((IDocumentPaginatorSource)flowDocumentCopy).DocumentPaginator, "Test print job");
+                    }
+                    else
+                    {
+                        var rangePaginagor = new PrintRangePaginator(((IDocumentPaginatorSource)flowDocumentCopy).DocumentPaginator, pDialog.PageRange);
+                        pDialog.PrintDocument(rangePaginagor, "Test print job");
+                    }
                 }
+            }
+        }
+
+        class PrintRangePaginator : DocumentPaginator
+        {
+            DocumentPaginator _paginator;
+            PageRange _range;
+
+            public override DocumentPage GetPage(int pageNumber)
+            {
+                var page = _paginator.GetPage(_range.PageFrom + pageNumber - 1);
+                return new DocumentPage(page.Visual);
+            }
+
+            public override bool IsPageCountValid { get { return _paginator.IsPageCountValid; } }
+
+            public override int PageCount
+            {
+                get { return Math.Min(_paginator.PageCount, _range.PageTo) - Math.Min(_paginator.PageCount, _range.PageFrom) + 1; }
+            }
+
+            public override Size PageSize
+            {
+                get { return _paginator.PageSize; }
+                set { _paginator.PageSize = value; }
+            }
+
+            public override IDocumentPaginatorSource Source
+            {
+                get { return _paginator.Source; }
+            }
+
+            public PrintRangePaginator(DocumentPaginator paginator, PageRange range)
+            {
+                Debug.Assert(paginator != null);
+                _paginator = paginator;
+                _range = range;
             }
         }
 
@@ -326,11 +373,14 @@ namespace PrintTests
             FlowDocument flowDocumentCopy;
             using (var ms = new System.IO.MemoryStream())
             {
-                var source = new TextRange(flowDocument.ContentStart, flowDocument.ContentEnd);
-                source.Save(ms, DataFormats.XamlPackage);
-                flowDocumentCopy = new FlowDocument();
-                var dest = new TextRange(flowDocumentCopy.ContentStart, flowDocumentCopy.ContentEnd);
-                dest.Load(ms, DataFormats.XamlPackage);
+                XamlWriter.Save(flowDocument, ms);
+                ms.Position = 0;
+                flowDocumentCopy = XamlReader.Load(ms) as FlowDocument;
+                //var source = new TextRange(flowDocument.ContentStart, flowDocument.ContentEnd);
+                //source.Save(ms, DataFormats.XamlPackage);
+                //flowDocumentCopy = new FlowDocument();
+                //var dest = new TextRange(flowDocumentCopy.ContentStart, flowDocumentCopy.ContentEnd);
+                //dest.Load(ms, DataFormats.XamlPackage);
             }
             __flowDocViewer.Document = flowDocument;
 

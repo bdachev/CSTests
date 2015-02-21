@@ -16,7 +16,34 @@
                             <Image Stretch="Uniform" Source="/Images/Logo.png" Width="1in" />
                         </BlockUIContainer>
                     </Figure>
-                    <Run>Text</Run>
+                    <Run>Page 1</Run>
+                </Paragraph>
+                <Paragraph>
+                    <Run>Text 1</Run>
+                </Paragraph>
+                <Paragraph BreakPageBefore="True">
+                    <Run>Page 2</Run>
+                </Paragraph>
+                <Paragraph>
+                    <Run>Text 2</Run>
+                </Paragraph>
+                <Paragraph BreakPageBefore="True">
+                    <Run>Page 3</Run>
+                </Paragraph>
+                <Paragraph>
+                    <Run>Text 3</Run>
+                </Paragraph>
+                <Paragraph BreakPageBefore="True">
+                    <Run>Page 4</Run>
+                </Paragraph>
+                <Paragraph>
+                    <Run>Text 4</Run>
+                </Paragraph>
+                <Paragraph BreakPageBefore="True">
+                    <Run>Page 5</Run>
+                </Paragraph>
+                <Paragraph>
+                    <Run>Text 5</Run>
                 </Paragraph>
             </FlowDocument>
         </FlowDocumentScrollViewer>
