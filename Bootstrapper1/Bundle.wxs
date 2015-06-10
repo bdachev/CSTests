@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Bundle Name="Bootstrapper1" Version="1.0.0.0" Manufacturer="Trio Motion Technology Ltd." UpgradeCode="12dc1960-f9c4-41cb-b5c4-1400c2b465bc">
+
+    <!--<BootstrapperApplicationRef Id="WixStandardBootstrapperApplication.RtfLicense" />-->
+
+    <BootstrapperApplicationRef Id="ManagedBootstrapperApplicationHost">
+      
+      <Payload Name="BootstrapperCore.config" SourceFile="$(var.MyBootstrapperCore.ProjectDir)BootstrapperCore.config"/>
+      <Payload SourceFile="$(var.MyBootstrapperCore.TargetPath)"/>
+
+    </BootstrapperApplicationRef>
+
+    <Chain>
+      <PackageGroupRef Id="NetFx40ClientRedist"/>
+
+      <MsiPackage SourceFile="$(var.SetupProject1.TargetPath)" />
+    </Chain>
+  </Bundle>
+</Wix>
