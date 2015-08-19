@@ -3,7 +3,13 @@
 	<Product Id="*" Name="SetupProject1" Language="1033" Version="1.0.0.0" Manufacturer="Trio Motion Technology Ltd." UpgradeCode="1ef15e9d-fb77-4e3d-bc8d-89e4fbab7aa2">
 		<Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
 
-		<MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <!--.NET 2.0 check-->
+    <PropertyRef Id="NETFRAMEWORK20" />
+    <Condition Message=".NET 2 missing">
+      <![CDATA[Installed OR NETFRAMEWORK20]]>
+    </Condition>
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
 		<Media Id="1" Cabinet="image1.cab" EmbedCab="yes" />
 
 		<Feature Id="ProductFeature" Title="SetupProject1" Level="1">

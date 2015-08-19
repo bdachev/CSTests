@@ -1,20 +1,71 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
   <Bundle Name="Bootstrapper1" Version="1.0.0.0" Manufacturer="Trio Motion Technology Ltd." UpgradeCode="12dc1960-f9c4-41cb-b5c4-1400c2b465bc">
 
-    <!--<BootstrapperApplicationRef Id="WixStandardBootstrapperApplication.RtfLicense" />-->
+    <BootstrapperApplicationRef Id="WixStandardBootstrapperApplication.RtfLicense" />
 
-    <BootstrapperApplicationRef Id="ManagedBootstrapperApplicationHost">
+    <!--<BootstrapperApplicationRef Id="ManagedBootstrapperApplicationHost">
       
       <Payload Name="BootstrapperCore.config" SourceFile="$(var.MyBootstrapperCore.ProjectDir)BootstrapperCore.config"/>
       <Payload SourceFile="$(var.MyBootstrapperCore.TargetPath)"/>
 
-    </BootstrapperApplicationRef>
+    </BootstrapperApplicationRef>-->
 
     <Chain>
+
+      <PackageGroupRef Id="NetFx35ClientWeb"/>
+
       <PackageGroupRef Id="NetFx40ClientRedist"/>
 
       <MsiPackage SourceFile="$(var.SetupProject1.TargetPath)" />
     </Chain>
+
   </Bundle>
+
+  <Fragment>
+
+    <?define NetFx35ClientWebLink = http://go.microsoft.com/fwlink/?LinkId=119637 ?>
+
+    <util:RegistrySearch Id="NetFramework35"
+                         Variable="NetFramework35"
+                         Root="HKLM"
+                         Key="SOFTWARE\Microsoft\NET Framework Setup\NDP\v3.5"
+                         Value="Install"
+                         Result="value" />
+    <util:RegistrySearch Id="NetFramework35Client"
+                         Variable="NetFramework35Client"
+                         Root="HKLM"
+                         Key="SOFTWARE\Microsoft\NET Framework Setup\DotNetClient\v3.5"
+                         Value="Install"
+                         Result="value" />
+
+    <PackageGroup Id="NetFx35ClientWeb">
+      <ExePackage
+        InstallCommand="/q /norestart /ChainingPackage &quot;[WixBundleName]&quot;"
+        RepairCommand="/q /norestart /repair /ChainingPackage &quot;[WixBundleName]&quot;"
+        UninstallCommand="/uninstall /q /norestart /ChainingPackage &quot;[WixBundleName]&quot;"
+        DetectCondition="NetFramework35 OR NetFramework35Client"
+        Id="NetFx35ClientWeb"
+        Permanent="yes"
+        PerMachine="yes"
+        DownloadUrl="$(var.NetFx35ClientWebLink)"
+        Cache="no"
+        Compressed="no"
+        Name="DotNetFx35ClientSetup.exe">
+        <RemotePayload
+          ProductName="Microsoft .NET Framework Client Profile"
+          Description="Microsoft .NET Framework Client Profile Setup"
+          CertificatePublicKey="F321408E7C51F8544B98E517D76A8334052E26E8"
+          CertificateThumbprint="D57FAC60F1A8D34877AEB350E83F46F6EFC9E5F1"
+          Hash="2D1200A3F30B4F9A377950C7258C75E1F7293E58"
+          Size="286232"
+          Version="3.5.30729.1" />
+        <ExitCode Value="1603" Behavior="success" />
+      </ExePackage>
+
+    </PackageGroup>
+
+  </Fragment>
+
 </Wix>
