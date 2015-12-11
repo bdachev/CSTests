@@ -10,12 +10,44 @@
             <x:XData>
                 <Items xmlns="">
                     <Item Name="h1">
-                        <Item Name="h2"/>
+                        <Item Name="h2">
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                        </Item>
                         <Item Name="h2"/>
                         <Item Name="h2"/>
                     </Item>
                     <Item Name="h1">
-                        <Item Name="h2"/>
+                        <Item Name="h2">
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                            <Item Name="h3"/>
+                        </Item>
                         <Item Name="h2"/>
                         <Item Name="h2"/>
                     </Item>
@@ -71,7 +103,7 @@
             </ToolBar>
         </ToolBarTray>
         <l:MyTreeView DockPanel.Dock="Top" ItemsSource="{Binding XPath=*, Source={StaticResource data}}"/>
-        <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding IconDecoder.Frames, ElementName=mainWindow}">
+        <!--<ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding IconDecoder.Frames, ElementName=mainWindow}">
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
                     <Border BorderBrush="Black" BorderThickness="1" SnapsToDevicePixels="True" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="3">
@@ -84,7 +116,48 @@
                     <StackPanel Orientation="Horizontal" IsItemsHost="True"/>
                 </ControlTemplate>
             </ItemsControl.Template>
-        </ItemsControl>
+        </ItemsControl>-->
+        <ScrollViewer DockPanel.Dock="Right" VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{Binding XPath=*, Source={StaticResource data}}" >
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Expander Header="{Binding XPath=@Name}" Padding="12,0,0,0">
+                            <Expander.Template>
+                                <ControlTemplate TargetType="Expander">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition x:Name="rdContent" />
+                                        </Grid.RowDefinitions>
+                                        <ToggleButton Height="10" Background="Transparent" Grid.ColumnSpan="2" IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}" />
+                                        <ToggleButton Width="10" Grid.Row="1" Background="Transparent" IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}" />
+                                        <ContentPresenter Grid.Row="1" Grid.Column="1" />
+                                    </Grid>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsExpanded" Value="False">
+                                            <Setter Property="Height" TargetName="rdContent" Value="0" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Expander.Template>
+                            <ItemsControl ItemsSource="{Binding XPath=*}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Expander Header="{Binding XPath=@Name}" Padding="12,0,0,0">
+                                            <ListBox ItemsSource="{Binding XPath=*}" DisplayMemberPath="@Name" PreviewMouseWheel="ListBox_PreviewMouseWheel"/>
+                                        </Expander>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Expander>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
         <ItemsControl DockPanel.Dock="Top" ItemsSource="{x:Static l:MainWindow.SystemColors}">
             <ItemsControl.ItemTemplate>
                 <DataTemplate>

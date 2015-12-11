@@ -73,5 +73,13 @@ namespace WpfApplication1
             if (cb != null && cb.IsDropDownOpen)
                 Dispatcher.BeginInvoke(DispatcherPriority.Background, (Func<bool>)dgData.CommitEdit);
         }
+
+        private void ListBox_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            Debug.Print("ListBox_PreviewMouseWheel");
+            e.Handled = true;
+            var lb = sender as ListBox;
+            lb.RaiseEvent(new MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta) { RoutedEvent = ListBox.MouseWheelEvent });
+        }
     }
 }
