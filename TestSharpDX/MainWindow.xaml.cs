@@ -53,7 +53,7 @@ namespace TestSharpDX
 
             var pp = new PresentParameters(_view.ClientSize.Width, _view.ClientSize.Height);
 
-            _deviceEx = new DeviceEx(_direct3DEx, 0, DeviceType.Hardware, _view.Handle, CreateFlags.Multithreaded, pp);
+            _deviceEx = new DeviceEx(_direct3DEx, 0, DeviceType.Hardware, _view.Handle, CreateFlags.HardwareVertexProcessing, pp);
         }
 
         public void Dispose()
